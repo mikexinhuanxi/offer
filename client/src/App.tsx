@@ -2,7 +2,6 @@ import {
   AlertCircle,
   ArrowUpRight,
   CheckCircle2,
-  Database,
   FileText,
   Loader2,
   Sparkles,
@@ -18,13 +17,6 @@ import {
   useState
 } from "react";
 import TrueFocus from "./components/TrueFocus";
-
-interface HealthInfo {
-  ok: boolean;
-  hasApiKey: boolean;
-  model: string;
-  baseUrl: string;
-}
 
 interface JobInfo {
   count: number;
@@ -164,6 +156,14 @@ interface AnalysisResponse {
 }
 
 type AppView = "home" | "upload" | "results";
+type ResultsTab = "overview" | "resume" | "interview" | "mock";
+
+const resultTabs: Array<{ id: ResultsTab; label: string }> = [
+  { id: "overview", label: "推荐概览" },
+  { id: "resume", label: "简历优化" },
+  { id: "interview", label: "面试准备" },
+  { id: "mock", label: "模拟 & HR" }
+];
 
 const progressSteps = ["读取简历", "获取岗位源", "查找岗位", "计算匹配", "生成建议", "腾讯辅导"];
 
@@ -185,7 +185,6 @@ const exampleResume = `张同学
 优势：学习速度快，能把产品需求拆成页面和数据结构，熟悉前端工程化基础。`;
 
 export default function App() {
-  const [health, setHealth] = useState<HealthInfo | null>(null);
   const [jobInfo, setJobInfo] = useState<JobInfo | null>(null);
   const [resumeText, setResumeText] = useState("");
   const [fileName, setFileName] = useState("");
@@ -194,6 +193,7 @@ export default function App() {
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
   const [selectedId, setSelectedId] = useState<string>("");
   const [view, setView] = useState<AppView>("home");
+  const [activeResultsTab, setActiveResultsTab] = useState<ResultsTab>("overview");
   const [error, setError] = useState("");
 
   const selectedMatch = useMemo(() => {
@@ -205,13 +205,7 @@ export default function App() {
   }, []);
 
   async function refreshStatus() {
-    const [healthResponse, jobsResponse] = await Promise.all([
-      fetch("/api/health"),
-      fetch("/api/jobs")
-    ]);
-    if (healthResponse.ok) {
-      setHealth(await healthResponse.json());
-    }
+    const jobsResponse = await fetch("/api/jobs");
     if (jobsResponse.ok) {
       setJobInfo(await jobsResponse.json());
     }
@@ -263,6 +257,7 @@ export default function App() {
       }
       setAnalysis(payload);
       setSelectedId(payload.matches?.[0]?.job.id ?? "");
+      setActiveResultsTab("overview");
       setView("results");
       setJobInfo({ count: payload.jobCount, source: payload.jobSource });
     } catch (caught) {
@@ -275,7 +270,7 @@ export default function App() {
   if (view === "home") {
     return (
       <main className="app-shell home-shell">
-        <HomeScreen health={health} jobInfo={jobInfo} onEnter={() => setView(analysis ? "results" : "upload")} />
+        <HomeScreen onEnter={() => setView(analysis ? "results" : "upload")} />
       </main>
     );
   }
@@ -283,19 +278,10 @@ export default function App() {
   return (
     <main className="app-shell">
       <section className={`hero ${analysis ? "hero-compact" : ""}`}>
-        <nav className="topbar" aria-label="应用状态">
+        <nav className="topbar" aria-label="主导航">
           <div className="brand-lockup">
             <Sparkles size={18} />
             <GradientText>Offer 捕手</GradientText>
-          </div>
-          <div className="status-row">
-            <StatusPill icon={<Database size={15} />} label={`${jobInfo?.count ?? 0} 个岗位`} />
-            <StatusPill
-              icon={health?.hasApiKey ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
-              label={health?.hasApiKey ? "服务已连接" : "待配置"}
-              tone={health?.hasApiKey ? "good" : "warn"}
-            />
-            <StatusPill label={health?.model ?? "qwen-plus"} quiet />
           </div>
         </nav>
 
@@ -383,6 +369,8 @@ export default function App() {
               selectedMatch={selectedMatch}
               selectedId={selectedId}
               onSelectJob={setSelectedId}
+              activeTab={activeResultsTab}
+              onTabChange={setActiveResultsTab}
             />
           </section>
         </FadeContent>
@@ -404,56 +392,92 @@ function ResultsDashboard({
   analysis,
   selectedMatch,
   selectedId,
-  onSelectJob
+  onSelectJob,
+  activeTab,
+  onTabChange
 }: {
   analysis: AnalysisResponse;
   selectedMatch?: JobMatch;
   selectedId: string;
   onSelectJob: (id: string) => void;
+  activeTab: ResultsTab;
+  onTabChange: (tab: ResultsTab) => void;
 }) {
   const coaching = analysis.tencentCoaching;
   const tailoring = coaching?.jobTailoring.find((item) => item.jobId === selectedMatch?.job.id);
   const interviewPrep = coaching?.interviewPrep.find((item) => item.jobId === selectedMatch?.job.id);
+  const activeTabLabel = resultTabs.find((tab) => tab.id === activeTab)?.label ?? resultTabs[0].label;
 
   return (
     <section className="results-dashboard" aria-label="匹配结果">
       <div className="results-headline">
-        <SectionTitle eyebrow="Tencent shortlist" title="推荐主线" />
-        <p>先看最值得投的岗位，再顺着证据、风险和下一步动作改简历。</p>
+        <SectionTitle eyebrow="Tencent shortlist" title="推荐结果" />
+        <p>先选岗位，再按推荐、简历、面试和模拟问答拆开看，避免所有建议挤在一屏里。</p>
       </div>
 
       <div className="opportunity-layout">
         <aside className="opportunity-rail" aria-label="推荐岗位列表">
           <MatchList matches={analysis.matches} selectedId={selectedId} onSelectJob={onSelectJob} />
         </aside>
-        {selectedMatch ? <SelectedOpportunity match={selectedMatch} /> : <EmptyResults />}
+        <div className="results-tab-stack">
+          <div className="results-tabs" role="tablist" aria-label="结果内容">
+            {resultTabs.map((tab) => (
+              <button
+                key={tab.id}
+                id={`results-tab-${tab.id}`}
+                className={`result-tab ${activeTab === tab.id ? "active" : ""}`}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === tab.id}
+                aria-controls={`results-panel-${tab.id}`}
+                onClick={() => onTabChange(tab.id)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          <div
+            className="results-tab-panel"
+            id={`results-panel-${activeTab}`}
+            role="tabpanel"
+            aria-label={activeTabLabel}
+            aria-labelledby={`results-tab-${activeTab}`}
+          >
+            {activeTab === "overview" ? (
+              selectedMatch ? <SelectedOpportunity match={selectedMatch} /> : <EmptyResults />
+            ) : null}
+
+            {activeTab === "resume" ? (
+              <div className="tab-panel-grid">
+                <CoachSection eyebrow="Tencent resume" title="简历诊断">
+                  <ResumeReviewPanel review={coaching?.resumeReview} />
+                </CoachSection>
+                <CoachSection eyebrow="Targeted resume" title="岗位定制">
+                  {selectedMatch ? <JobTailoringPanel match={selectedMatch} tailoring={tailoring} /> : <EmptyResults />}
+                </CoachSection>
+              </div>
+            ) : null}
+
+            {activeTab === "interview" ? (
+              <CoachSection eyebrow="Interview prep" title="面试准备">
+                {selectedMatch ? <InterviewPrepPanel match={selectedMatch} prep={interviewPrep} /> : <EmptyResults />}
+              </CoachSection>
+            ) : null}
+
+            {activeTab === "mock" ? (
+              <div className="tab-panel-grid">
+                <CoachSection eyebrow="Mock interview" title="模拟面试">
+                  <MockInterviewPanel questions={coaching?.mockInterview ?? []} />
+                </CoachSection>
+                <CoachSection eyebrow="Group & HR" title="群面 / HR 面">
+                  <GroupHrPanel prep={coaching?.groupAndHrPrep} />
+                </CoachSection>
+              </div>
+            ) : null}
+          </div>
+        </div>
       </div>
-
-      <section className="coaching-sections" aria-label="求职辅导">
-        <CoachSection eyebrow="Tencent resume" title="简历诊断">
-          <ResumeReviewPanel review={coaching?.resumeReview} />
-        </CoachSection>
-
-        {selectedMatch ? (
-          <CoachSection eyebrow="Targeted resume" title="岗位定制">
-            <JobTailoringPanel match={selectedMatch} tailoring={tailoring} />
-          </CoachSection>
-        ) : null}
-
-        {selectedMatch ? (
-          <CoachSection eyebrow="Interview prep" title="面试准备">
-            <InterviewPrepPanel match={selectedMatch} prep={interviewPrep} />
-          </CoachSection>
-        ) : null}
-
-        <CoachSection eyebrow="Mock interview" title="模拟面试">
-          <MockInterviewPanel questions={coaching?.mockInterview ?? []} />
-        </CoachSection>
-
-        <CoachSection eyebrow="Group & HR" title="群面 / HR 面">
-          <GroupHrPanel prep={coaching?.groupAndHrPrep} />
-        </CoachSection>
-      </section>
     </section>
   );
 }
@@ -515,30 +539,13 @@ function EmptyResults() {
   );
 }
 
-function HomeScreen({
-  health,
-  jobInfo,
-  onEnter
-}: {
-  health: HealthInfo | null;
-  jobInfo: JobInfo | null;
-  onEnter: () => void;
-}) {
+function HomeScreen({ onEnter }: { onEnter: () => void }) {
   return (
     <section className="home-screen" aria-label="Offer 捕手首页">
-      <nav className="home-topbar" aria-label="应用状态">
+      <nav className="home-topbar" aria-label="主导航">
         <div className="brand-lockup home-brand">
           <Sparkles size={18} />
           <span>Offer 捕手</span>
-        </div>
-        <div className="status-row">
-          <StatusPill icon={<Database size={15} />} label={`${jobInfo?.count ?? 0} 个岗位`} />
-          <StatusPill
-            icon={health?.hasApiKey ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
-            label={health?.hasApiKey ? "服务已连接" : "待配置"}
-            tone={health?.hasApiKey ? "good" : "warn"}
-          />
-          <StatusPill label={health?.model ?? "qwen-plus"} quiet />
         </div>
       </nav>
       <div className="home-focus">
@@ -600,25 +607,6 @@ function GlareButton({
       <span className="button-glare" />
       <span className="button-content">{children}</span>
     </button>
-  );
-}
-
-function StatusPill({
-  icon,
-  label,
-  tone,
-  quiet
-}: {
-  icon?: ReactNode;
-  label: string;
-  tone?: "good" | "warn";
-  quiet?: boolean;
-}) {
-  return (
-    <div className={`status-pill ${tone ?? ""} ${quiet ? "quiet" : ""}`}>
-      {icon}
-      <span>{label}</span>
-    </div>
   );
 }
 
