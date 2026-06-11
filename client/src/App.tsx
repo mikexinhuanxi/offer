@@ -17,6 +17,7 @@ import {
   useMemo,
   useState
 } from "react";
+import TrueFocus from "./components/TrueFocus";
 
 interface HealthInfo {
   ok: boolean;
@@ -163,6 +164,7 @@ interface AnalysisResponse {
 }
 
 type ResultTab = "jobs" | "resume" | "tailoring" | "interview" | "mock" | "groupHr";
+type AppView = "home" | "upload" | "results";
 
 const progressSteps = ["读取简历", "获取岗位源", "查找岗位", "计算匹配", "生成建议", "腾讯辅导"];
 const resultTabs: Array<{ id: ResultTab; label: string }> = [
@@ -201,6 +203,7 @@ export default function App() {
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
   const [selectedId, setSelectedId] = useState<string>("");
   const [activeTab, setActiveTab] = useState<ResultTab>("jobs");
+  const [view, setView] = useState<AppView>("home");
   const [error, setError] = useState("");
 
   const selectedMatch = useMemo(() => {
@@ -270,13 +273,21 @@ export default function App() {
       }
       setAnalysis(payload);
       setSelectedId(payload.matches?.[0]?.job.id ?? "");
-      setActiveTab("jobs");
+      setView("results");
       setJobInfo({ count: payload.jobCount, source: payload.jobSource });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
       setAnalyzing(false);
     }
+  }
+
+  if (view === "home") {
+    return (
+      <main className="app-shell home-shell">
+        <HomeScreen health={health} jobInfo={jobInfo} onEnter={() => setView(analysis ? "results" : "upload")} />
+      </main>
+    );
   }
 
   return (
@@ -377,9 +388,7 @@ export default function App() {
         <FadeContent>
           <section className="results-shell">
             <ProfileSummary profile={analysis.profile} />
-            <TabNav activeTab={activeTab} onChange={setActiveTab} />
-            <ResultWorkbench
-              activeTab={activeTab}
+            <ResultsDashboard
               analysis={analysis}
               selectedMatch={selectedMatch}
               selectedId={selectedId}
@@ -398,6 +407,170 @@ export default function App() {
         </FadeContent>
       )}
     </main>
+  );
+}
+
+function ResultsDashboard({
+  analysis,
+  selectedMatch,
+  selectedId,
+  onSelectJob
+}: {
+  analysis: AnalysisResponse;
+  selectedMatch?: JobMatch;
+  selectedId: string;
+  onSelectJob: (id: string) => void;
+}) {
+  const coaching = analysis.tencentCoaching;
+  const tailoring = coaching?.jobTailoring.find((item) => item.jobId === selectedMatch?.job.id);
+  const interviewPrep = coaching?.interviewPrep.find((item) => item.jobId === selectedMatch?.job.id);
+
+  return (
+    <section className="results-dashboard" aria-label="匹配结果">
+      <div className="results-headline">
+        <SectionTitle eyebrow="Tencent shortlist" title="推荐主线" />
+        <p>先看最值得投的岗位，再顺着证据、风险和下一步动作改简历。</p>
+      </div>
+
+      <div className="opportunity-layout">
+        <aside className="opportunity-rail" aria-label="推荐岗位列表">
+          <MatchList matches={analysis.matches} selectedId={selectedId} onSelectJob={onSelectJob} />
+        </aside>
+        {selectedMatch ? <SelectedOpportunity match={selectedMatch} /> : <EmptyResults />}
+      </div>
+
+      <section className="coaching-sections" aria-label="求职辅导">
+        <CoachSection eyebrow="Tencent resume" title="简历诊断">
+          <ResumeReviewPanel review={coaching?.resumeReview} />
+        </CoachSection>
+
+        {selectedMatch ? (
+          <CoachSection eyebrow="Targeted resume" title="岗位定制">
+            <JobTailoringPanel match={selectedMatch} tailoring={tailoring} />
+          </CoachSection>
+        ) : null}
+
+        {selectedMatch ? (
+          <CoachSection eyebrow="Interview prep" title="面试准备">
+            <InterviewPrepPanel match={selectedMatch} prep={interviewPrep} />
+          </CoachSection>
+        ) : null}
+
+        <CoachSection eyebrow="Mock interview" title="模拟面试">
+          <MockInterviewPanel questions={coaching?.mockInterview ?? []} />
+        </CoachSection>
+
+        <CoachSection eyebrow="Group & HR" title="群面 / HR 面">
+          <GroupHrPanel prep={coaching?.groupAndHrPrep} />
+        </CoachSection>
+      </section>
+    </section>
+  );
+}
+
+function CoachSection({ eyebrow, title, children }: { eyebrow: string; title: string; children: ReactNode }) {
+  return (
+    <section className="coach-section">
+      <SectionTitle eyebrow={eyebrow} title={title} />
+      {children}
+    </section>
+  );
+}
+
+function SelectedOpportunity({ match }: { match: JobMatch }) {
+  const interpretation = match.recommendation?.jdInterpretation;
+
+  return (
+    <article className="selected-opportunity">
+      <div className="job-hero">
+        <span>{match.job.company}</span>
+        <h3>{match.job.title}</h3>
+        <p>
+          {match.job.city} · {match.job.type}
+        </p>
+        {match.job.link ? (
+          <a href={match.job.link} target="_blank" rel="noreferrer">
+            投递链接 <ArrowUpRight size={14} />
+          </a>
+        ) : null}
+      </div>
+
+      <div className="focus-box">
+        <span>推荐理由</span>
+        <p>{match.recommendation?.matchReason || match.reasons.slice(0, 2).join("；")}</p>
+        <small>{match.recommendation?.sourceLabel || "岗位信息来自后端岗位源。"}</small>
+      </div>
+
+      <div className="opportunity-grid">
+        <InsightBlock title="JD 硬要求" items={interpretation?.hardRequirements ?? [match.job.requirements]} />
+        <InsightBlock title="简历侧重" items={interpretation?.resumeFocus ?? match.resumeActions} />
+        <InsightBlock title="风险缺口" items={match.risks} warn />
+        <InsightBlock title="下一步动作" items={match.resumeActions} />
+      </div>
+
+      <div className="rewrite-box">
+        <span>建议改写</span>
+        <p>{match.rewriteExample}</p>
+      </div>
+    </article>
+  );
+}
+
+function EmptyResults() {
+  return (
+    <div className="selected-opportunity empty-results">
+      <strong>还没有推荐结果</strong>
+      <p>可以调整简历内容，或稍后刷新岗位库后重新匹配。</p>
+    </div>
+  );
+}
+
+function HomeScreen({
+  health,
+  jobInfo,
+  onEnter
+}: {
+  health: HealthInfo | null;
+  jobInfo: JobInfo | null;
+  onEnter: () => void;
+}) {
+  return (
+    <section className="home-screen" aria-label="Offer 捕手首页">
+      <nav className="home-topbar" aria-label="应用状态">
+        <div className="brand-lockup home-brand">
+          <Sparkles size={18} />
+          <span>Offer 捕手</span>
+        </div>
+        <div className="status-row">
+          <StatusPill icon={<Database size={15} />} label={`${jobInfo?.count ?? 0} 个岗位`} />
+          <StatusPill
+            icon={health?.hasApiKey ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
+            label={health?.hasApiKey ? "服务已连接" : "待配置"}
+            tone={health?.hasApiKey ? "good" : "warn"}
+          />
+          <StatusPill label={health?.model ?? "qwen-plus"} quiet />
+        </div>
+      </nav>
+      <div className="home-focus">
+        <p className="home-kicker">Resume to offer shortlist</p>
+        <h1 className="sr-only">Offer 捕手</h1>
+        <TrueFocus
+          sentence="Offer 捕手"
+          blurAmount={4}
+          borderColor="#15d7bc"
+          glowColor="rgba(21, 215, 188, 0.55)"
+          animationDuration={0.7}
+          pauseBetweenAnimations={1.1}
+        />
+        <button className="home-cta primary-button" onClick={onEnter}>
+          <span className="button-glare" />
+          <span className="button-content">
+            <WandSparkles size={18} />
+            开始捕捉 Offer
+          </span>
+        </button>
+      </div>
+    </section>
   );
 }
 
