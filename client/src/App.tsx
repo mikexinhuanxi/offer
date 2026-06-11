@@ -1,0 +1,905 @@
+import {
+  AlertCircle,
+  ArrowUpRight,
+  CheckCircle2,
+  Database,
+  FileText,
+  Loader2,
+  Sparkles,
+  UploadCloud,
+  WandSparkles
+} from "lucide-react";
+import {
+  type ChangeEvent,
+  type MouseEvent,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useState
+} from "react";
+
+interface HealthInfo {
+  ok: boolean;
+  hasApiKey: boolean;
+  model: string;
+  baseUrl: string;
+}
+
+interface JobInfo {
+  count: number;
+  source: string;
+}
+
+interface CandidateProfile {
+  name?: string;
+  summary: string;
+  education: string;
+  major: string;
+  degree: string;
+  targetRoles: string[];
+  cities: string[];
+  skills: string[];
+  tools: string[];
+  languages: string[];
+  internships: string[];
+  projects: string[];
+  strengths: string[];
+  risks: string[];
+  keywords: string[];
+}
+
+interface Job {
+  id: string;
+  company: string;
+  title: string;
+  city: string;
+  type: string;
+  description: string;
+  requirements: string;
+  bonus: string;
+  link: string;
+  deadline: string;
+}
+
+interface ScoreBreakdown {
+  skills: number;
+  experience: number;
+  keywords: number;
+  location: number;
+  growth: number;
+}
+
+interface JdInterpretation {
+  hardRequirements: string[];
+  softQualities: string[];
+  bonusPoints: string[];
+  resumeFocus: string[];
+  interviewPrep: string[];
+}
+
+interface JobRecommendation {
+  summary: string;
+  matchReason: string;
+  sourceLabel: string;
+  jdInterpretation: JdInterpretation;
+}
+
+interface JobMatch {
+  job: Job;
+  score: number;
+  fitLevel: "冲刺" | "匹配" | "稳妥" | "不建议";
+  screeningProbability: number;
+  breakdown: ScoreBreakdown;
+  reasons: string[];
+  risks: string[];
+  missingKeywords: string[];
+  resumeActions: string[];
+  rewriteExample: string;
+  recommendation?: JobRecommendation;
+}
+
+interface ResumeReview {
+  highlights: string[];
+  issues: string[];
+  actions: string[];
+  rewritePrinciples: string[];
+}
+
+interface JobTailoring {
+  jobId: string;
+  focus: string;
+  keywordStrategy: string[];
+  rewriteExamples: string[];
+  evidenceToAdd: string[];
+}
+
+interface InterviewPrep {
+  jobId: string;
+  focusAreas: string[];
+  projectDeepDive: string[];
+  knowledgeTopics: string[];
+  preparationPlan: string[];
+}
+
+interface MockInterviewQuestion {
+  jobId?: string;
+  type: "项目深挖" | "专业基础" | "岗位理解" | "行为面" | "HR面";
+  question: string;
+  interviewerFocus: string;
+  answerHint: string;
+}
+
+interface GroupAndHrPrep {
+  groupInterview: string[];
+  hrQuestions: string[];
+  answerFrameworks: string[];
+  cautions: string[];
+}
+
+interface TencentCoaching {
+  resumeReview: ResumeReview;
+  jobTailoring: JobTailoring[];
+  interviewPrep: InterviewPrep[];
+  mockInterview: MockInterviewQuestion[];
+  groupAndHrPrep: GroupAndHrPrep;
+}
+
+interface SkillTraceStep {
+  id: string;
+  name: string;
+  status: "completed" | "failed";
+  summary: string;
+  durationMs: number;
+}
+
+interface AnalysisResponse {
+  profile: CandidateProfile;
+  matches: JobMatch[];
+  tencentCoaching?: TencentCoaching;
+  trace: SkillTraceStep[];
+  model: string;
+  jobSource: string;
+  jobCount: number;
+}
+
+type ResultTab = "jobs" | "resume" | "tailoring" | "interview" | "mock" | "groupHr";
+
+const progressSteps = ["读取简历", "获取岗位源", "查找岗位", "计算匹配", "生成建议", "腾讯辅导"];
+const resultTabs: Array<{ id: ResultTab; label: string }> = [
+  { id: "jobs", label: "岗位推荐" },
+  { id: "resume", label: "简历诊断" },
+  { id: "tailoring", label: "岗位定制" },
+  { id: "interview", label: "面试准备" },
+  { id: "mock", label: "模拟面试" },
+  { id: "groupHr", label: "群面/HR" }
+];
+
+const exampleResume = `张同学
+本科 软件工程
+
+求职方向：前端开发实习生、AI 产品助理
+
+技能：JavaScript、TypeScript、React、Vite、CSS、Python、SQL、Figma
+
+项目经历：
+1. 参与校园二手交易平台开发，负责商品发布、搜索筛选、聊天入口等前端模块，使用 React 和 TypeScript 完成组件封装。
+2. 设计并实现求职信息整理工具，支持岗位标签、投递状态和简历版本管理。
+3. 使用 Python 对招聘岗位文本做关键词统计，输出岗位技能热词看板。
+
+实习经历：
+在互联网产品团队担任产品运营实习生，整理用户反馈，协助撰写需求文档，并参与数据看板维护。
+
+优势：学习速度快，能把产品需求拆成页面和数据结构，熟悉前端工程化基础。`;
+
+export default function App() {
+  const [health, setHealth] = useState<HealthInfo | null>(null);
+  const [jobInfo, setJobInfo] = useState<JobInfo | null>(null);
+  const [resumeText, setResumeText] = useState("");
+  const [fileName, setFileName] = useState("");
+  const [extracting, setExtracting] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
+  const [selectedId, setSelectedId] = useState<string>("");
+  const [activeTab, setActiveTab] = useState<ResultTab>("jobs");
+  const [error, setError] = useState("");
+
+  const selectedMatch = useMemo(() => {
+    return analysis?.matches.find((match) => match.job.id === selectedId) ?? analysis?.matches[0];
+  }, [analysis, selectedId]);
+
+  useEffect(() => {
+    void refreshStatus();
+  }, []);
+
+  async function refreshStatus() {
+    const [healthResponse, jobsResponse] = await Promise.all([
+      fetch("/api/health"),
+      fetch("/api/jobs")
+    ]);
+    if (healthResponse.ok) {
+      setHealth(await healthResponse.json());
+    }
+    if (jobsResponse.ok) {
+      setJobInfo(await jobsResponse.json());
+    }
+  }
+
+  async function handleResumeFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    setFileName(file.name);
+    setError("");
+    setExtracting(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("resume", file);
+      const response = await fetch("/api/extract-resume", {
+        method: "POST",
+        body: formData
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error ?? "简历提取失败");
+      }
+      setResumeText(payload.text);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setExtracting(false);
+    }
+  }
+
+  async function runAnalysis() {
+    setError("");
+    setAnalyzing(true);
+
+    try {
+      const response = await fetch("/api/analyze", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ resumeText })
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.hint ? `${payload.error} ${payload.hint}` : payload.error);
+      }
+      setAnalysis(payload);
+      setSelectedId(payload.matches?.[0]?.job.id ?? "");
+      setActiveTab("jobs");
+      setJobInfo({ count: payload.jobCount, source: payload.jobSource });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
+  return (
+    <main className="app-shell">
+      <section className={`hero ${analysis ? "hero-compact" : ""}`}>
+        <nav className="topbar" aria-label="应用状态">
+          <div className="brand-lockup">
+            <Sparkles size={18} />
+            <GradientText>Offer 捕手</GradientText>
+          </div>
+          <div className="status-row">
+            <StatusPill icon={<Database size={15} />} label={`${jobInfo?.count ?? 0} 个岗位`} />
+            <StatusPill
+              icon={health?.hasApiKey ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
+              label={health?.hasApiKey ? "服务已连接" : "待配置"}
+              tone={health?.hasApiKey ? "good" : "warn"}
+            />
+            <StatusPill label={health?.model ?? "qwen-plus"} quiet />
+          </div>
+        </nav>
+
+        <div className="hero-copy">
+          <p className="eyebrow">Resume to offer shortlist</p>
+          <h1>上传简历，找到更值得投的岗位。</h1>
+          <p>
+            岗位推荐基于腾讯官网真实 JD，结果聚焦推荐理由、JD 解读和可以直接修改的简历表达。
+          </p>
+        </div>
+      </section>
+
+      {error ? (
+        <FadeContent>
+          <section className="error-banner">
+            <AlertCircle size={17} />
+            <span>{error}</span>
+          </section>
+        </FadeContent>
+      ) : null}
+
+      <section className={`starter ${analysis ? "starter-with-results" : ""}`}>
+        <SpotlightCard className="upload-card">
+          <div className="card-heading">
+            <div>
+              <span>Step 01</span>
+              <h2>放入你的简历</h2>
+            </div>
+            <FileText size={22} />
+          </div>
+
+          <label className="upload-zone">
+            <input
+              type="file"
+              accept=".pdf,.docx,.txt,.md,.json,.csv,text/*,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              onChange={handleResumeFile}
+            />
+            <UploadCloud size={28} />
+            <strong>{extracting ? "正在读取文件" : fileName || "上传 PDF / DOCX / TXT"}</strong>
+            <span>也可以在下方直接粘贴简历正文</span>
+          </label>
+
+          <textarea
+            value={resumeText}
+            onChange={(event) => setResumeText(event.target.value)}
+            placeholder="粘贴简历内容，或先载入样例体验完整流程..."
+          />
+
+          <div className="action-row">
+            <button className="secondary-button" onClick={() => setResumeText(exampleResume)}>
+              <FileText size={16} />
+              载入样例
+            </button>
+            <GlareButton disabled={analyzing || extracting || resumeText.trim().length < 30} onClick={runAnalysis}>
+              {analyzing ? <Loader2 className="spin" size={17} /> : <WandSparkles size={17} />}
+              {analyzing ? "分析中" : "开始匹配"}
+            </GlareButton>
+          </div>
+
+          <div className="source-line">
+            <span>岗位库</span>
+            <strong>{jobInfo?.count ?? 0} 条</strong>
+            <small>{shortenSource(jobInfo?.source)}</small>
+          </div>
+        </SpotlightCard>
+
+        <SpotlightCard className="progress-card">
+          <div className="card-heading">
+            <div>
+              <span>Step 02</span>
+              <h2>分析进度</h2>
+            </div>
+            <Sparkles size={22} />
+          </div>
+          <ProgressList trace={analysis?.trace} active={analyzing} />
+        </SpotlightCard>
+      </section>
+
+      {analysis ? (
+        <FadeContent>
+          <section className="results-shell">
+            <ProfileSummary profile={analysis.profile} />
+            <TabNav activeTab={activeTab} onChange={setActiveTab} />
+            <ResultWorkbench
+              activeTab={activeTab}
+              analysis={analysis}
+              selectedMatch={selectedMatch}
+              selectedId={selectedId}
+              onSelectJob={setSelectedId}
+            />
+          </section>
+        </FadeContent>
+      ) : (
+        <FadeContent>
+          <section className="empty-preview">
+            <div>
+              <GradientText>匹配结果会在这里展开</GradientText>
+              <p>先上传简历。系统会从后端岗位库里筛出值得优先投递的机会。</p>
+            </div>
+          </section>
+        </FadeContent>
+      )}
+    </main>
+  );
+}
+
+function GradientText({ children }: { children: ReactNode }) {
+  return <span className="gradient-text">{children}</span>;
+}
+
+function FadeContent({ children }: { children: ReactNode }) {
+  return <div className="fade-content">{children}</div>;
+}
+
+function SpotlightCard({ className, children }: { className: string; children: ReactNode }) {
+  function handleMouseMove(event: MouseEvent<HTMLDivElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    event.currentTarget.style.setProperty("--spotlight-x", `${event.clientX - rect.left}px`);
+    event.currentTarget.style.setProperty("--spotlight-y", `${event.clientY - rect.top}px`);
+  }
+
+  return (
+    <div className={`spotlight-card ${className}`} onMouseMove={handleMouseMove}>
+      {children}
+    </div>
+  );
+}
+
+function GlareButton({
+  children,
+  disabled,
+  onClick
+}: {
+  children: ReactNode;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button className="primary-button" disabled={disabled} onClick={onClick}>
+      <span className="button-glare" />
+      <span className="button-content">{children}</span>
+    </button>
+  );
+}
+
+function StatusPill({
+  icon,
+  label,
+  tone,
+  quiet
+}: {
+  icon?: ReactNode;
+  label: string;
+  tone?: "good" | "warn";
+  quiet?: boolean;
+}) {
+  return (
+    <div className={`status-pill ${tone ?? ""} ${quiet ? "quiet" : ""}`}>
+      {icon}
+      <span>{label}</span>
+    </div>
+  );
+}
+
+function ProgressList({ trace, active }: { trace?: SkillTraceStep[]; active: boolean }) {
+  const steps = trace ?? progressSteps.map((name, index) => ({ id: name, name, index }));
+
+  return (
+    <div className="progress-list">
+      {steps.map((step, index) => {
+        const completed = "status" in step && step.status === "completed";
+        const failed = "status" in step && step.status === "failed";
+        const pending = !("status" in step);
+        const current = active && pending && index === 0;
+        return (
+          <div className={`progress-step ${completed ? "done" : ""} ${failed ? "failed" : ""}`} key={step.id}>
+            <span className="step-dot">
+              {current ? <Loader2 className="spin" size={13} /> : completed ? <CheckCircle2 size={14} /> : index + 1}
+            </span>
+            <div>
+              <strong>{displayStepName(step.name, index)}</strong>
+              <p>
+                {"summary" in step
+                  ? `${step.status === "completed" ? "已完成" : "未完成"} · ${formatDuration(step.durationMs)}`
+                  : active
+                    ? "等待中"
+                    : "准备就绪"}
+              </p>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ProfileSummary({ profile }: { profile: CandidateProfile }) {
+  const skills = [...profile.skills, ...profile.tools].slice(0, 8);
+  return (
+    <section className="profile-summary">
+      <div>
+        <span>简历摘要</span>
+        <h2>{profile.summary || "已完成简历读取"}</h2>
+      </div>
+      <div className="profile-facts">
+        <MiniMetric label="专业" value={profile.major || "未识别"} />
+        <MiniMetric label="学历" value={profile.degree || profile.education || "未识别"} />
+        <MiniMetric label="关键词" value={`${skills.length} 个`} />
+      </div>
+      <div className="tag-row">
+        {skills.map((skill) => (
+          <span key={skill}>{skill}</span>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function MiniMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="mini-metric">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function SectionTitle({ eyebrow, title }: { eyebrow: string; title: string }) {
+  return (
+    <div className="section-title">
+      <span>{eyebrow}</span>
+      <h2>{title}</h2>
+    </div>
+  );
+}
+
+function TabNav({
+  activeTab,
+  onChange
+}: {
+  activeTab: ResultTab;
+  onChange: (tab: ResultTab) => void;
+}) {
+  return (
+    <div className="tab-nav" role="tablist" aria-label="腾讯校招辅导工作台">
+      {resultTabs.map((tab) => (
+        <button
+          key={tab.id}
+          className={activeTab === tab.id ? "active" : ""}
+          role="tab"
+          aria-selected={activeTab === tab.id}
+          onClick={() => onChange(tab.id)}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ResultWorkbench({
+  activeTab,
+  analysis,
+  selectedMatch,
+  selectedId,
+  onSelectJob
+}: {
+  activeTab: ResultTab;
+  analysis: AnalysisResponse;
+  selectedMatch?: JobMatch;
+  selectedId: string;
+  onSelectJob: (id: string) => void;
+}) {
+  const coaching = analysis.tencentCoaching;
+  const tailoring = coaching?.jobTailoring.find((item) => item.jobId === selectedMatch?.job.id);
+  const interviewPrep = coaching?.interviewPrep.find((item) => item.jobId === selectedMatch?.job.id);
+
+  if (activeTab === "jobs") {
+    return (
+      <div className="results-grid">
+        <section className="match-section" aria-label="岗位匹配榜">
+          <SectionTitle eyebrow="Tencent shortlist" title="腾讯岗位推荐" />
+          <MatchList matches={analysis.matches} selectedId={selectedId} onSelectJob={onSelectJob} />
+        </section>
+
+        <section className="diagnosis-section" aria-label="JD 解读">
+          <SectionTitle eyebrow="JD reading" title="JD 解读" />
+          {selectedMatch ? <Diagnosis match={selectedMatch} /> : null}
+        </section>
+      </div>
+    );
+  }
+
+  if (activeTab === "resume") {
+    return (
+      <section className="coach-panel" aria-label="简历诊断">
+        <SectionTitle eyebrow="Tencent resume" title="简历诊断" />
+        <ResumeReviewPanel review={coaching?.resumeReview} />
+      </section>
+    );
+  }
+
+  if (activeTab === "tailoring") {
+    return (
+      <section className="coach-panel" aria-label="岗位定制">
+        <SectionTitle eyebrow="Targeted resume" title="岗位定制" />
+        <JobPicker matches={analysis.matches} selectedId={selectedId} onSelectJob={onSelectJob} />
+        {selectedMatch ? <JobTailoringPanel match={selectedMatch} tailoring={tailoring} /> : null}
+      </section>
+    );
+  }
+
+  if (activeTab === "interview") {
+    return (
+      <section className="coach-panel" aria-label="面试准备">
+        <SectionTitle eyebrow="Interview prep" title="面试准备" />
+        <JobPicker matches={analysis.matches} selectedId={selectedId} onSelectJob={onSelectJob} />
+        {selectedMatch ? <InterviewPrepPanel match={selectedMatch} prep={interviewPrep} /> : null}
+      </section>
+    );
+  }
+
+  if (activeTab === "mock") {
+    return (
+      <section className="coach-panel" aria-label="模拟面试">
+        <SectionTitle eyebrow="Mock interview" title="模拟面试" />
+        <MockInterviewPanel questions={coaching?.mockInterview ?? []} />
+      </section>
+    );
+  }
+
+  return (
+    <section className="coach-panel" aria-label="群面和 HR 面辅导">
+      <SectionTitle eyebrow="Group & HR" title="群面 / HR 面" />
+      <GroupHrPanel prep={coaching?.groupAndHrPrep} />
+    </section>
+  );
+}
+
+function MatchList({
+  matches,
+  selectedId,
+  onSelectJob
+}: {
+  matches: JobMatch[];
+  selectedId: string;
+  onSelectJob: (id: string) => void;
+}) {
+  return (
+    <div className="match-list">
+      {matches.map((match) => (
+        <button
+          key={match.job.id}
+          className={`match-card ${selectedId === match.job.id ? "selected" : ""}`}
+          onClick={() => onSelectJob(match.job.id)}
+        >
+          <div className="match-main">
+            <div className="match-heading">
+              <strong>{match.job.title}</strong>
+              <span>{match.job.type}</span>
+            </div>
+            <p>
+              {match.job.company} · {match.job.city} · {match.job.type}
+            </p>
+            <p className="match-reason">
+              {match.recommendation?.matchReason || match.reasons.slice(0, 2).join("；")}
+            </p>
+            <div className="tag-row">
+              {match.missingKeywords.slice(0, 3).map((keyword) => (
+                <span key={keyword}>{keyword}</span>
+              ))}
+            </div>
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function JobPicker({
+  matches,
+  selectedId,
+  onSelectJob
+}: {
+  matches: JobMatch[];
+  selectedId: string;
+  onSelectJob: (id: string) => void;
+}) {
+  return (
+    <div className="job-picker" aria-label="选择岗位">
+      {matches.map((match) => (
+        <button
+          key={match.job.id}
+          className={selectedId === match.job.id ? "active" : ""}
+          onClick={() => onSelectJob(match.job.id)}
+        >
+          {match.job.title}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ResumeReviewPanel({ review }: { review?: ResumeReview }) {
+  return (
+    <div className="coach-grid two-columns">
+      <CoachBlock title="亮点可保留" items={review?.highlights} />
+      <CoachBlock title="需要修正" items={review?.issues} warn />
+      <CoachBlock title="修改动作" items={review?.actions} />
+      <CoachBlock title="改写原则" items={review?.rewritePrinciples} />
+    </div>
+  );
+}
+
+function JobTailoringPanel({
+  match,
+  tailoring
+}: {
+  match: JobMatch;
+  tailoring?: JobTailoring;
+}) {
+  return (
+    <div className="coach-detail">
+      <JobContext match={match} />
+      <div className="focus-box">
+        <span>定制重点</span>
+        <p>{tailoring?.focus || "围绕该岗位 JD 中最核心的能力要求，优先呈现真实项目证据。"}</p>
+      </div>
+      <div className="coach-grid two-columns">
+        <CoachBlock title="关键词策略" items={tailoring?.keywordStrategy} />
+        <CoachBlock title="需要补证据" items={tailoring?.evidenceToAdd} warn />
+      </div>
+      <CoachBlock title="岗位定制改写" items={tailoring?.rewriteExamples} boxed />
+    </div>
+  );
+}
+
+function InterviewPrepPanel({ match, prep }: { match: JobMatch; prep?: InterviewPrep }) {
+  return (
+    <div className="coach-detail">
+      <JobContext match={match} />
+      <div className="coach-grid two-columns">
+        <CoachBlock title="准备重点" items={prep?.focusAreas} />
+        <CoachBlock title="项目深挖" items={prep?.projectDeepDive} />
+        <CoachBlock title="知识主题" items={prep?.knowledgeTopics} />
+        <CoachBlock title="准备动作" items={prep?.preparationPlan} />
+      </div>
+    </div>
+  );
+}
+
+function MockInterviewPanel({ questions }: { questions: MockInterviewQuestion[] }) {
+  return (
+    <div className="question-list">
+      {questions.length > 0 ? (
+        questions.map((item, index) => (
+          <article className="question-card" key={`${item.type}-${item.question}`}>
+            <span>
+              {index + 1}. {item.type}
+            </span>
+            <h3>{item.question}</h3>
+            <p>
+              <strong>关注点</strong>
+              {item.interviewerFocus}
+            </p>
+            <p>
+              <strong>回答建议</strong>
+              {item.answerHint}
+            </p>
+          </article>
+        ))
+      ) : (
+        <EmptyCoach />
+      )}
+    </div>
+  );
+}
+
+function GroupHrPanel({ prep }: { prep?: GroupAndHrPrep }) {
+  return (
+    <div className="coach-grid two-columns">
+      <CoachBlock title="群面策略" items={prep?.groupInterview} />
+      <CoachBlock title="HR 面问题" items={prep?.hrQuestions} />
+      <CoachBlock title="回答框架" items={prep?.answerFrameworks} />
+      <CoachBlock title="注意事项" items={prep?.cautions} warn />
+    </div>
+  );
+}
+
+function JobContext({ match }: { match: JobMatch }) {
+  return (
+    <div className="job-context">
+      <span>当前岗位</span>
+      <strong>{match.job.title}</strong>
+      <p>
+        {match.job.company} · {match.job.city} · {match.job.type}
+      </p>
+    </div>
+  );
+}
+
+function CoachBlock({
+  title,
+  items,
+  warn,
+  boxed
+}: {
+  title: string;
+  items?: string[];
+  warn?: boolean;
+  boxed?: boolean;
+}) {
+  return (
+    <div className={`coach-block ${warn ? "warn" : ""} ${boxed ? "boxed" : ""}`}>
+      <strong>{title}</strong>
+      {items && items.length > 0 ? (
+        <ul>
+          {items.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      ) : (
+        <EmptyCoach />
+      )}
+    </div>
+  );
+}
+
+function EmptyCoach() {
+  return <p className="empty-coach">暂无可展示内容。</p>;
+}
+
+function Diagnosis({ match }: { match: JobMatch }) {
+  const interpretation = match.recommendation?.jdInterpretation;
+
+  return (
+    <div className="diagnosis">
+      <div className="job-hero">
+        <span>{match.job.company}</span>
+        <h3>{match.job.title}</h3>
+        <p>
+          {match.job.city} · {match.job.type}
+        </p>
+        {match.job.link ? (
+          <a href={match.job.link} target="_blank" rel="noreferrer">
+            投递链接 <ArrowUpRight size={14} />
+          </a>
+        ) : null}
+      </div>
+
+      <div className="focus-box">
+        <span>推荐理由</span>
+        <p>{match.recommendation?.matchReason || match.reasons.slice(0, 2).join("；")}</p>
+        <small>{match.recommendation?.sourceLabel || "岗位信息来自后端岗位源。"}</small>
+      </div>
+
+      <InsightBlock title="硬性条件" items={interpretation?.hardRequirements ?? [match.job.requirements]} />
+      <InsightBlock title="软性素质" items={interpretation?.softQualities ?? match.reasons} />
+      <InsightBlock title="加分项" items={interpretation?.bonusPoints ?? [match.job.bonus].filter(Boolean)} />
+      <InsightBlock title="简历侧重" items={interpretation?.resumeFocus ?? match.resumeActions} />
+      <InsightBlock title="面试准备" items={interpretation?.interviewPrep ?? []} />
+      <InsightBlock title="需要补强" items={match.risks} warn />
+
+      <div className="rewrite-box">
+        <span>建议改写</span>
+        <p>{match.rewriteExample}</p>
+      </div>
+    </div>
+  );
+}
+
+function InsightBlock({ title, items, warn }: { title: string; items: string[]; warn?: boolean }) {
+  return (
+    <div className={`insight-block ${warn ? "warn" : ""}`}>
+      <strong>{title}</strong>
+      <ul>
+        {items.length > 0 ? items.map((item) => <li key={item}>{item}</li>) : <li>暂无</li>}
+      </ul>
+    </div>
+  );
+}
+
+function displayStepName(name: string, index: number) {
+  const normalized = name
+    .replace("简历解析 Skill", "读取简历")
+    .replace("腾讯岗位源 Skill", "获取岗位源")
+    .replace("岗位库检索 Skill", "查找岗位")
+    .replace("匹配评分 Skill", "计算匹配")
+    .replace("简历优化 Skill", "生成建议")
+    .replace("腾讯辅导 Skill", "腾讯辅导");
+  return normalized.includes("Skill") ? progressSteps[index] ?? normalized : normalized;
+}
+
+function formatDuration(durationMs: number) {
+  if (durationMs < 1000) {
+    return `${durationMs}ms`;
+  }
+  return `${(durationMs / 1000).toFixed(1)}s`;
+}
+
+function shortenSource(source?: string) {
+  if (!source) {
+    return "读取中";
+  }
+  const normalized = source.replace(/\\/g, "/");
+  const parts = normalized.split("/");
+  return parts.slice(-2).join("/");
+}

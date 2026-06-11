@@ -1,0 +1,74 @@
+[
+  {
+    "id": "frontend-intern-001",
+    "company": "星河互动",
+    "title": "前端开发实习生",
+    "city": "上海",
+    "type": "实习",
+    "description": "参与数据产品 Web 工作台开发，负责 React 组件、可视化图表和交互性能优化。",
+    "requirements": "熟悉 JavaScript、TypeScript、React、CSS，理解前端工程化，有项目协作经验。",
+    "bonus": "有 Vite、可视化图表、设计系统或 AI 应用项目经验优先。",
+    "link": "https://example.com/jobs/frontend-intern",
+    "deadline": "2026-07-15"
+  },
+  {
+    "id": "ai-pm-intern-002",
+    "company": "云帆智能",
+    "title": "AI 产品经理实习生",
+    "city": "杭州",
+    "type": "实习",
+    "description": "参与企业级智能体产品规划，梳理用户场景、设计 prompt 流程、跟进模型效果评估。",
+    "requirements": "具备产品分析、用户访谈、PRD 写作能力，理解大模型、智能体、RAG 或工具调用。",
+    "bonus": "有 AI 产品 demo、数据分析或低代码平台经验优先。",
+    "link": "https://example.com/jobs/ai-pm-intern",
+    "deadline": "2026-07-05"
+  },
+  {
+    "id": "data-analyst-003",
+    "company": "明数科技",
+    "title": "数据分析师",
+    "city": "北京",
+    "type": "校招",
+    "description": "负责业务指标体系搭建、数据看板、用户行为分析和专题分析报告输出。",
+    "requirements": "熟练 SQL、Excel、Python，理解统计分析方法，能清晰表达分析结论。",
+    "bonus": "有 BI 工具、A/B 实验、增长分析或实习项目经验优先。",
+    "link": "https://example.com/jobs/data-analyst",
+    "deadline": "2026-08-01"
+  },
+  {
+    "id": "java-backend-004",
+    "company": "澜石金融科技",
+    "title": "Java 后端开发工程师",
+    "city": "深圳",
+    "type": "校招",
+    "description": "参与交易风控系统开发，负责接口设计、服务治理、数据一致性和性能优化。",
+    "requirements": "熟悉 Java、Spring Boot、MySQL、Redis，理解计算机网络和常见设计模式。",
+    "bonus": "有高并发、消息队列、微服务或金融系统项目经验优先。",
+    "link": "https://example.com/jobs/java-backend",
+    "deadline": "2026-07-30"
+  },
+  {
+    "id": "nlp-intern-005",
+    "company": "观澜 AI Lab",
+    "title": "NLP 算法实习生",
+    "city": "北京",
+    "type": "实习",
+    "description": "参与文本分类、信息抽取、RAG 评测和大模型应用优化实验。",
+    "requirements": "熟悉 Python、PyTorch、机器学习基础，了解 Transformer、Embedding、检索增强生成。",
+    "bonus": "有论文复现、Kaggle、NLP 项目或大模型应用经验优先。",
+    "link": "https://example.com/jobs/nlp-intern",
+    "deadline": "2026-07-20"
+  },
+  {
+    "id": "ux-intern-006",
+    "company": "青柚设计",
+    "title": "UX/UI 设计实习生",
+    "city": "广州",
+    "type": "实习",
+    "description": "参与 B 端产品的信息架构、界面设计、交互原型和可用性验证。",
+    "requirements": "熟练 Figma，理解组件化设计、用户研究和交互设计基本方法。",
+    "bonus": "有设计系统、复杂表单、数据看板或可访问性经验优先。",
+    "link": "https://example.com/jobs/ux-intern",
+    "deadline": "2026-07-10"
+  }
+]

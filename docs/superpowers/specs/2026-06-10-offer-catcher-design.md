@@ -2,12 +2,12 @@
 
 ## Goal
 
-Build a real AI-powered web demo for "Offer 捕手", a student job-matching agent. The first screen should feel like a usable product prototype, not a marketing page. The user uploads a resume and a prepared job dataset, then the agent extracts the candidate profile, searches the job pool, scores fit, and generates resume optimization advice for target roles.
+Build a real AI-powered web demo for "Offer 捕手", a student job-matching agent. The first screen should feel like a usable product prototype, not a marketing page. The user uploads a resume, while the backend reads a prepared job dataset. The agent extracts the candidate profile, searches the job pool, scores fit, and generates resume optimization advice for target roles.
 
 ## Product Flow
 
 1. The user uploads or pastes a resume.
-2. The user imports job information from CSV, JSON, or a built-in sample set.
+2. The backend loads job information from `server/data/jobs.json`, `server/data/jobs.csv`, or a configured `JOBS_FILE` path.
 3. The agent runs a visible skill pipeline:
    - Resume parsing skill
    - Job retrieval skill
@@ -37,11 +37,11 @@ Resume input supports:
 - `.txt`, `.md`, `.json`, and `.csv` text-based uploads
 - `.pdf` and `.docx` uploads with graceful fallback messaging if local extraction is limited
 
-Job input supports:
+Job data supports:
 
-- Built-in demo jobs
-- CSV paste or upload
-- JSON paste or upload
+- Built-in demo jobs if no backend data file exists
+- Backend JSON files
+- Backend CSV files
 
 Expected job fields:
 
@@ -77,10 +77,12 @@ Backend:
   - `DASHSCOPE_API_KEY`
   - `DASHSCOPE_BASE_URL`, default `https://dashscope.aliyuncs.com/compatible-mode/v1`
   - `DASHSCOPE_MODEL`, default `qwen-plus`
+  - `JOBS_FILE`, optional explicit backend job data path
 
 API endpoints:
 
 - `GET /api/health`: reports server and model configuration status.
+- `GET /api/jobs`: reports loaded backend job count and source.
 - `POST /api/analyze`: runs the complete skill pipeline and returns structured results.
 
 ## AI Contract
@@ -93,22 +95,28 @@ The model must not invent live job listings. It can only reason over the uploade
 
 - Missing API key: show a setup prompt and keep sample UI usable.
 - Empty resume: request resume content before running analysis.
-- Empty job pool: load built-in jobs or ask the user to upload jobs.
+- Empty job pool: load built-in jobs or ask the user to place a valid job file under `server/data`.
 - Model/network failure: show the failed skill step and a concise error message.
 - Invalid JSON/CSV: show parser errors and keep the previous valid job pool.
 
 ## Visual Design
 
-The app uses a product-workbench layout with a more luminous finish:
+The app uses a minimalist card layout. The first screen should feel like a polished student-facing tool instead of an AI operations console.
 
-- Dark gradient canvas with subtle grid and particle effects
-- Glass panels with restrained glow borders
-- Upload zones with animated focus states
-- Skill execution trace as a live vertical rail
-- Ranked job cards with compact score chips
-- Right-side diagnosis panel with score rings, bars, and action-oriented suggestions
+- Light neutral background with white cards, fine borders, and soft shadows
+- A compact product header with the title "Offer 捕手" and a quiet status row
+- A primary resume upload card before analysis
+- Results appear progressively after analysis: job ranking, selected role diagnosis, and resume advice
+- "Skill Trace" is renamed to "分析进度" to reduce AI-console language
+- Alibaba Cloud Model Studio status is kept visible but visually secondary
+- React Bits-inspired local effects are used sparingly:
+  - gradient text for the product name and important numbers
+  - spotlight hover cards for upload and result cards
+  - fade-in/slide-up content entrance
+  - subtle glare on the primary action button
+  - smooth animated score rings and progress bars
 
-The page should remain an actual tool. Decorative effects must not obscure text, reduce contrast, or make the workflow feel like a landing page.
+The page should remain an actual tool. Decorative effects must not obscure text, reduce contrast, or make the workflow feel like a component showcase.
 
 ## Verification
 
@@ -120,4 +128,3 @@ Implementation should be verified by:
 - Checking desktop and mobile-ish viewport layout
 - Running the analysis flow in missing-key state
 - Running the analysis flow with API if `DASHSCOPE_API_KEY` is available
-
