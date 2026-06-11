@@ -5,6 +5,7 @@ dist/
 npm-debug.log*
 coverage/
 tmp/
+.superpowers/
 *.sqlite
 *.sqlite-*
 *.tsbuildinfo
