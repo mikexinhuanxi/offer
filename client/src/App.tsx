@@ -163,18 +163,9 @@ interface AnalysisResponse {
   jobCount: number;
 }
 
-type ResultTab = "jobs" | "resume" | "tailoring" | "interview" | "mock" | "groupHr";
 type AppView = "home" | "upload" | "results";
 
 const progressSteps = ["读取简历", "获取岗位源", "查找岗位", "计算匹配", "生成建议", "腾讯辅导"];
-const resultTabs: Array<{ id: ResultTab; label: string }> = [
-  { id: "jobs", label: "岗位推荐" },
-  { id: "resume", label: "简历诊断" },
-  { id: "tailoring", label: "岗位定制" },
-  { id: "interview", label: "面试准备" },
-  { id: "mock", label: "模拟面试" },
-  { id: "groupHr", label: "群面/HR" }
-];
 
 const exampleResume = `张同学
 本科 软件工程
@@ -202,7 +193,6 @@ export default function App() {
   const [analyzing, setAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
   const [selectedId, setSelectedId] = useState<string>("");
-  const [activeTab, setActiveTab] = useState<ResultTab>("jobs");
   const [view, setView] = useState<AppView>("home");
   const [error, setError] = useState("");
 
@@ -704,109 +694,6 @@ function SectionTitle({ eyebrow, title }: { eyebrow: string; title: string }) {
   );
 }
 
-function TabNav({
-  activeTab,
-  onChange
-}: {
-  activeTab: ResultTab;
-  onChange: (tab: ResultTab) => void;
-}) {
-  return (
-    <div className="tab-nav" role="tablist" aria-label="腾讯校招辅导工作台">
-      {resultTabs.map((tab) => (
-        <button
-          key={tab.id}
-          className={activeTab === tab.id ? "active" : ""}
-          role="tab"
-          aria-selected={activeTab === tab.id}
-          onClick={() => onChange(tab.id)}
-        >
-          {tab.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function ResultWorkbench({
-  activeTab,
-  analysis,
-  selectedMatch,
-  selectedId,
-  onSelectJob
-}: {
-  activeTab: ResultTab;
-  analysis: AnalysisResponse;
-  selectedMatch?: JobMatch;
-  selectedId: string;
-  onSelectJob: (id: string) => void;
-}) {
-  const coaching = analysis.tencentCoaching;
-  const tailoring = coaching?.jobTailoring.find((item) => item.jobId === selectedMatch?.job.id);
-  const interviewPrep = coaching?.interviewPrep.find((item) => item.jobId === selectedMatch?.job.id);
-
-  if (activeTab === "jobs") {
-    return (
-      <div className="results-grid">
-        <section className="match-section" aria-label="岗位匹配榜">
-          <SectionTitle eyebrow="Tencent shortlist" title="腾讯岗位推荐" />
-          <MatchList matches={analysis.matches} selectedId={selectedId} onSelectJob={onSelectJob} />
-        </section>
-
-        <section className="diagnosis-section" aria-label="JD 解读">
-          <SectionTitle eyebrow="JD reading" title="JD 解读" />
-          {selectedMatch ? <Diagnosis match={selectedMatch} /> : null}
-        </section>
-      </div>
-    );
-  }
-
-  if (activeTab === "resume") {
-    return (
-      <section className="coach-panel" aria-label="简历诊断">
-        <SectionTitle eyebrow="Tencent resume" title="简历诊断" />
-        <ResumeReviewPanel review={coaching?.resumeReview} />
-      </section>
-    );
-  }
-
-  if (activeTab === "tailoring") {
-    return (
-      <section className="coach-panel" aria-label="岗位定制">
-        <SectionTitle eyebrow="Targeted resume" title="岗位定制" />
-        <JobPicker matches={analysis.matches} selectedId={selectedId} onSelectJob={onSelectJob} />
-        {selectedMatch ? <JobTailoringPanel match={selectedMatch} tailoring={tailoring} /> : null}
-      </section>
-    );
-  }
-
-  if (activeTab === "interview") {
-    return (
-      <section className="coach-panel" aria-label="面试准备">
-        <SectionTitle eyebrow="Interview prep" title="面试准备" />
-        <JobPicker matches={analysis.matches} selectedId={selectedId} onSelectJob={onSelectJob} />
-        {selectedMatch ? <InterviewPrepPanel match={selectedMatch} prep={interviewPrep} /> : null}
-      </section>
-    );
-  }
-
-  if (activeTab === "mock") {
-    return (
-      <section className="coach-panel" aria-label="模拟面试">
-        <SectionTitle eyebrow="Mock interview" title="模拟面试" />
-        <MockInterviewPanel questions={coaching?.mockInterview ?? []} />
-      </section>
-    );
-  }
-
-  return (
-    <section className="coach-panel" aria-label="群面和 HR 面辅导">
-      <SectionTitle eyebrow="Group & HR" title="群面 / HR 面" />
-      <GroupHrPanel prep={coaching?.groupAndHrPrep} />
-    </section>
-  );
-}
-
 function MatchList({
   matches,
   selectedId,
@@ -841,30 +728,6 @@ function MatchList({
               ))}
             </div>
           </div>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function JobPicker({
-  matches,
-  selectedId,
-  onSelectJob
-}: {
-  matches: JobMatch[];
-  selectedId: string;
-  onSelectJob: (id: string) => void;
-}) {
-  return (
-    <div className="job-picker" aria-label="选择岗位">
-      {matches.map((match) => (
-        <button
-          key={match.job.id}
-          className={selectedId === match.job.id ? "active" : ""}
-          onClick={() => onSelectJob(match.job.id)}
-        >
-          {match.job.title}
         </button>
       ))}
     </div>
@@ -998,45 +861,6 @@ function CoachBlock({
 
 function EmptyCoach() {
   return <p className="empty-coach">暂无可展示内容。</p>;
-}
-
-function Diagnosis({ match }: { match: JobMatch }) {
-  const interpretation = match.recommendation?.jdInterpretation;
-
-  return (
-    <div className="diagnosis">
-      <div className="job-hero">
-        <span>{match.job.company}</span>
-        <h3>{match.job.title}</h3>
-        <p>
-          {match.job.city} · {match.job.type}
-        </p>
-        {match.job.link ? (
-          <a href={match.job.link} target="_blank" rel="noreferrer">
-            投递链接 <ArrowUpRight size={14} />
-          </a>
-        ) : null}
-      </div>
-
-      <div className="focus-box">
-        <span>推荐理由</span>
-        <p>{match.recommendation?.matchReason || match.reasons.slice(0, 2).join("；")}</p>
-        <small>{match.recommendation?.sourceLabel || "岗位信息来自后端岗位源。"}</small>
-      </div>
-
-      <InsightBlock title="硬性条件" items={interpretation?.hardRequirements ?? [match.job.requirements]} />
-      <InsightBlock title="软性素质" items={interpretation?.softQualities ?? match.reasons} />
-      <InsightBlock title="加分项" items={interpretation?.bonusPoints ?? [match.job.bonus].filter(Boolean)} />
-      <InsightBlock title="简历侧重" items={interpretation?.resumeFocus ?? match.resumeActions} />
-      <InsightBlock title="面试准备" items={interpretation?.interviewPrep ?? []} />
-      <InsightBlock title="需要补强" items={match.risks} warn />
-
-      <div className="rewrite-box">
-        <span>建议改写</span>
-        <p>{match.rewriteExample}</p>
-      </div>
-    </div>
-  );
 }
 
 function InsightBlock({ title, items, warn }: { title: string; items: string[]; warn?: boolean }) {
