@@ -1,0 +1,73 @@
+.ih-btn {
+  position: relative;
+  cursor: pointer;
+  overflow: hidden;
+  border-radius: 9999px;
+  border: 1px solid #d1d5db;
+  padding: 14px 32px;
+  font-weight: 600;
+  font-size: 15px;
+  background: #ffffff;
+  color: #111827;
+  transition: border-color 0.3s;
+}
+
+.ih-btn:hover {
+  border-color: #15d7bc;
+}
+
+/* Rest state */
+.ih-btn-rest {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.3s ease;
+}
+
+.ih-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #15d7bc;
+  transition: transform 0.3s ease;
+}
+
+.ih-btn:hover .ih-dot {
+  transform: scale(100.8);
+}
+
+.ih-label {
+  display: inline-block;
+  transition: all 0.3s ease;
+}
+
+.ih-btn:hover .ih-label {
+  transform: translateX(48px);
+  opacity: 0;
+}
+
+/* Hover state */
+.ih-btn-hover {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 10;
+  display: flex;
+  height: 100%;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: #111827;
+  color: #ffffff;
+  transform: translateX(48px);
+  opacity: 0;
+  transition: all 0.3s ease;
+  border-radius: 9999px;
+}
+
+.ih-btn:hover .ih-btn-hover {
+  transform: translateX(0);
+  opacity: 1;
+}

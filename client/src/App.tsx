@@ -16,6 +16,8 @@ import {
   useMemo,
   useState
 } from "react";
+import CurvedLoop from "./components/CurvedLoop";
+import InteractiveHoverButton from "./components/InteractiveHoverButton";
 import TrueFocus from "./components/TrueFocus";
 
 interface JobInfo {
@@ -286,7 +288,6 @@ export default function App() {
         </nav>
 
         <div className="hero-copy">
-          <p className="eyebrow">Resume to offer shortlist</p>
           <h1>上传简历，找到更值得投的岗位。</h1>
           <p>
             岗位推荐基于腾讯官网真实 JD，结果聚焦推荐理由、JD 解读和可以直接修改的简历表达。
@@ -374,16 +375,7 @@ export default function App() {
             />
           </section>
         </FadeContent>
-      ) : (
-        <FadeContent>
-          <section className="empty-preview">
-            <div>
-              <GradientText>匹配结果会在这里展开</GradientText>
-              <p>先上传简历。系统会从后端岗位库里筛出值得优先投递的机会。</p>
-            </div>
-          </section>
-        </FadeContent>
-      )}
+      ) : null}
     </main>
   );
 }
@@ -549,7 +541,6 @@ function HomeScreen({ onEnter }: { onEnter: () => void }) {
         </div>
       </nav>
       <div className="home-focus">
-        <p className="home-kicker">Resume to offer shortlist</p>
         <h1 className="sr-only">Offer 捕手</h1>
         <TrueFocus
           sentence="Offer 捕手"
@@ -559,13 +550,18 @@ function HomeScreen({ onEnter }: { onEnter: () => void }) {
           animationDuration={0.7}
           pauseBetweenAnimations={1.1}
         />
-        <button className="home-cta primary-button" onClick={onEnter}>
-          <span className="button-glare" />
-          <span className="button-content">
-            <WandSparkles size={18} />
-            开始捕捉 Offer
-          </span>
-        </button>
+        <InteractiveHoverButton onClick={onEnter}>
+          开始捕捉 Offer
+        </InteractiveHoverButton>
+        <div className="home-curved-loop">
+          <CurvedLoop
+            marqueeText="✦ Resume to Offer Shortlist ✦"
+            speed={1.5}
+            curveAmount={300}
+            direction="left"
+            interactive={true}
+          />
+        </div>
       </div>
     </section>
   );

@@ -110,6 +110,12 @@ button {
   box-shadow: 0 20px 60px rgba(17, 24, 39, 0.16);
 }
 
+.home-curved-loop {
+  margin-top: auto;
+  width: 100%;
+  padding-top: 24px;
+}
+
 .home-cta:hover {
   box-shadow: 0 24px 70px rgba(17, 24, 39, 0.22);
 }
