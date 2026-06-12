@@ -119,26 +119,44 @@ beforeEach(() => {
   });
 });
 
-test("starts on the Offer 捕手 home screen and enters upload from the CTA", async () => {
+test("starts on a clean white home screen and enters upload from the CTA", async () => {
   render(<App />);
 
   expect(screen.getByRole("heading", { name: "Offer 捕手" })).toBeInTheDocument();
+  expect(screen.queryByText("服务已连接")).not.toBeInTheDocument();
+  expect(screen.queryByText("qwen-plus")).not.toBeInTheDocument();
+  expect(screen.queryByText("1 个岗位")).not.toBeInTheDocument();
   expect(screen.queryByRole("heading", { name: "放入你的简历" })).not.toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "开始捕捉 Offer" }));
 
   expect(await screen.findByRole("heading", { name: "放入你的简历" })).toBeInTheDocument();
+  expect(screen.getByText("上传简历")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "载入样例" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "开始捕获" })).toBeInTheDocument();
+  expect(screen.queryByText("粘贴内容")).not.toBeInTheDocument();
+  expect(screen.getByText("JD 硬要求")).toBeInTheDocument();
+  expect(screen.getByText("简历改写方向")).toBeInTheDocument();
+  const swapPreview = screen.getByLabelText("捕获过程预览").querySelector(".card-swap-container");
+  expect(swapPreview).toHaveStyle({ width: "860px", height: "560px" });
 });
 
-test("shows the results dashboard without the old tab workbench after analysis", async () => {
+test("shows task tabs in results and switches to resume optimization", async () => {
   render(<App />);
 
   fireEvent.click(screen.getByRole("button", { name: "开始捕捉 Offer" }));
   fireEvent.click(await screen.findByRole("button", { name: "载入样例" }));
-  fireEvent.click(screen.getByRole("button", { name: "开始匹配" }));
+  fireEvent.click(screen.getByRole("button", { name: "开始捕获" }));
 
-  expect(await screen.findByRole("heading", { name: "推荐主线" })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "推荐结果" })).toBeInTheDocument();
+  expect(screen.getByRole("tablist", { name: "结果内容" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "推荐概览", selected: true })).toBeInTheDocument();
   expect(screen.getAllByText("前端开发工程师").length).toBeGreaterThan(0);
   expect(screen.getAllByText("React 和 TypeScript 经历与岗位要求一致。").length).toBeGreaterThan(0);
-  expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("tab", { name: "简历优化" }));
+
+  expect(screen.getByRole("tab", { name: "简历优化", selected: true })).toBeInTheDocument();
+  expect(screen.getByText("突出 React 工程能力。")).toBeInTheDocument();
+  expect(screen.getByText("项目方向清晰")).toBeInTheDocument();
 });

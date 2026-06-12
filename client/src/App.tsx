@@ -5,6 +5,7 @@ import {
   Database,
   FileText,
   Loader2,
+  Radar,
   Sparkles,
   UploadCloud,
   WandSparkles
@@ -17,14 +18,10 @@ import {
   useMemo,
   useState
 } from "react";
+import CardSwap, { Card } from "./components/CardSwap";
+import CurvedLoop from "./components/CurvedLoop";
+import InteractiveHoverButton from "./components/InteractiveHoverButton";
 import TrueFocus from "./components/TrueFocus";
-
-interface HealthInfo {
-  ok: boolean;
-  hasApiKey: boolean;
-  model: string;
-  baseUrl: string;
-}
 
 interface JobInfo {
   count: number;
@@ -164,6 +161,14 @@ interface AnalysisResponse {
 }
 
 type AppView = "home" | "upload" | "results";
+type ResultsTab = "overview" | "resume" | "interview" | "mock";
+
+const resultTabs: Array<{ id: ResultsTab; label: string }> = [
+  { id: "overview", label: "推荐概览" },
+  { id: "resume", label: "简历优化" },
+  { id: "interview", label: "面试准备" },
+  { id: "mock", label: "模拟 & HR" }
+];
 
 const progressSteps = ["读取简历", "获取岗位源", "查找岗位", "计算匹配", "生成建议", "腾讯辅导"];
 
@@ -185,7 +190,6 @@ const exampleResume = `张同学
 优势：学习速度快，能把产品需求拆成页面和数据结构，熟悉前端工程化基础。`;
 
 export default function App() {
-  const [health, setHealth] = useState<HealthInfo | null>(null);
   const [jobInfo, setJobInfo] = useState<JobInfo | null>(null);
   const [resumeText, setResumeText] = useState("");
   const [fileName, setFileName] = useState("");
@@ -194,6 +198,7 @@ export default function App() {
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
   const [selectedId, setSelectedId] = useState<string>("");
   const [view, setView] = useState<AppView>("home");
+  const [activeResultsTab, setActiveResultsTab] = useState<ResultsTab>("overview");
   const [error, setError] = useState("");
 
   const selectedMatch = useMemo(() => {
@@ -205,13 +210,7 @@ export default function App() {
   }, []);
 
   async function refreshStatus() {
-    const [healthResponse, jobsResponse] = await Promise.all([
-      fetch("/api/health"),
-      fetch("/api/jobs")
-    ]);
-    if (healthResponse.ok) {
-      setHealth(await healthResponse.json());
-    }
+    const jobsResponse = await fetch("/api/jobs");
     if (jobsResponse.ok) {
       setJobInfo(await jobsResponse.json());
     }
@@ -263,6 +262,7 @@ export default function App() {
       }
       setAnalysis(payload);
       setSelectedId(payload.matches?.[0]?.job.id ?? "");
+      setActiveResultsTab("overview");
       setView("results");
       setJobInfo({ count: payload.jobCount, source: payload.jobSource });
     } catch (caught) {
@@ -275,7 +275,7 @@ export default function App() {
   if (view === "home") {
     return (
       <main className="app-shell home-shell">
-        <HomeScreen health={health} jobInfo={jobInfo} onEnter={() => setView(analysis ? "results" : "upload")} />
+        <HomeScreen onEnter={() => setView(analysis ? "results" : "upload")} />
       </main>
     );
   }
@@ -283,24 +283,14 @@ export default function App() {
   return (
     <main className="app-shell">
       <section className={`hero ${analysis ? "hero-compact" : ""}`}>
-        <nav className="topbar" aria-label="应用状态">
+        <nav className="topbar" aria-label="主导航">
           <div className="brand-lockup">
             <Sparkles size={18} />
             <GradientText>Offer 捕手</GradientText>
           </div>
-          <div className="status-row">
-            <StatusPill icon={<Database size={15} />} label={`${jobInfo?.count ?? 0} 个岗位`} />
-            <StatusPill
-              icon={health?.hasApiKey ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
-              label={health?.hasApiKey ? "服务已连接" : "待配置"}
-              tone={health?.hasApiKey ? "good" : "warn"}
-            />
-            <StatusPill label={health?.model ?? "qwen-plus"} quiet />
-          </div>
         </nav>
 
         <div className="hero-copy">
-          <p className="eyebrow">Resume to offer shortlist</p>
           <h1>上传简历，找到更值得投的岗位。</h1>
           <p>
             岗位推荐基于腾讯官网真实 JD，结果聚焦推荐理由、JD 解读和可以直接修改的简历表达。
@@ -317,61 +307,124 @@ export default function App() {
         </FadeContent>
       ) : null}
 
-      <section className={`starter ${analysis ? "starter-with-results" : ""}`}>
-        <SpotlightCard className="upload-card">
-          <div className="card-heading">
-            <div>
-              <span>Step 01</span>
-              <h2>放入你的简历</h2>
-            </div>
-            <FileText size={22} />
+      <section className={`starter upload-stage ${analysis ? "starter-with-results" : ""}`}>
+        <div className="upload-workbench">
+          <div className="upload-intro">
+            <span>Step 01</span>
+            <h2>放入你的简历</h2>
+            <p>先把简历丢进来，再开始捕获岗位信号。样例只保留一个小入口，方便快速试跑。</p>
           </div>
 
-          <label className="upload-zone">
+          <label className="resume-dropzone">
             <input
               type="file"
               accept=".pdf,.docx,.txt,.md,.json,.csv,text/*,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
               onChange={handleResumeFile}
             />
-            <UploadCloud size={28} />
-            <strong>{extracting ? "正在读取文件" : fileName || "上传 PDF / DOCX / TXT"}</strong>
-            <span>也可以在下方直接粘贴简历正文</span>
+            <span className="resume-dropzone-icon">
+              <UploadCloud size={24} />
+            </span>
+            <span>上传简历</span>
+            <strong>{extracting ? "正在读取文件" : fileName || "PDF / DOCX / TXT"}</strong>
           </label>
 
           <textarea
+            id="resume-text"
+            className="resume-paste-field"
             value={resumeText}
             onChange={(event) => setResumeText(event.target.value)}
-            placeholder="粘贴简历内容，或先载入样例体验完整流程..."
+            placeholder="也可以直接粘贴简历正文..."
           />
 
-          <div className="action-row">
-            <button className="secondary-button" onClick={() => setResumeText(exampleResume)}>
+          <div className="capture-command-row">
+            <button className="sample-button" onClick={() => setResumeText(exampleResume)}>
               <FileText size={16} />
               载入样例
             </button>
             <GlareButton disabled={analyzing || extracting || resumeText.trim().length < 30} onClick={runAnalysis}>
               {analyzing ? <Loader2 className="spin" size={17} /> : <WandSparkles size={17} />}
-              {analyzing ? "分析中" : "开始匹配"}
+              {analyzing ? "捕获中" : "开始捕获"}
             </GlareButton>
           </div>
 
-          <div className="source-line">
+          <div className="source-line upload-source-line">
             <span>岗位库</span>
             <strong>{jobInfo?.count ?? 0} 条</strong>
             <small>{shortenSource(jobInfo?.source)}</small>
           </div>
-        </SpotlightCard>
+        </div>
 
-        <SpotlightCard className="progress-card">
-          <div className="card-heading">
-            <div>
-              <span>Step 02</span>
-              <h2>分析进度</h2>
-            </div>
-            <Sparkles size={22} />
-          </div>
-          <ProgressList trace={analysis?.trace} active={analyzing} />
-        </SpotlightCard>
+        <aside className="swap-stage" aria-label="捕获过程预览">
+          <CardSwap
+            width={860}
+            height={560}
+            cardDistance={92}
+            verticalDistance={78}
+            delay={4200}
+            pauseOnHover
+            skewAmount={4}
+            easing="elastic"
+          >
+            <Card customClass="swap-card swap-card-jd">
+              <div className="swap-card-inner">
+                <div className="swap-card-topline">
+                  <Radar size={19} />
+                  <span>JD 硬要求</span>
+                </div>
+                <div className="swap-card-body">
+                  <h3>先抓真正筛人的条件</h3>
+                  <ul className="swap-insight-list">
+                    <li>技能栈是否直接命中岗位描述里的工具和语言。</li>
+                    <li>项目经历是否能证明完整交付，而不只是参与。</li>
+                    <li>城市、岗位类型和截止时间是否值得优先投递。</li>
+                  </ul>
+                </div>
+              </div>
+            </Card>
+            <Card customClass="swap-card swap-card-rewrite">
+              <div className="swap-card-inner">
+                <div className="swap-card-topline">
+                  <Sparkles size={19} />
+                  <span>简历改写方向</span>
+                </div>
+                <div className="swap-card-body">
+                  <h3>把经历改成招聘方能判断的证据</h3>
+                  <div className="rewrite-preview">
+                    <span>原表达</span>
+                    <p>参与校园二手平台前端开发。</p>
+                    <span>建议方向</span>
+                    <p>负责发布、筛选、消息入口组件，沉淀可复用表单和状态管理方案。</p>
+                  </div>
+                </div>
+              </div>
+            </Card>
+            <Card customClass="swap-card swap-card-priority">
+              <div className="swap-card-inner">
+                <div className="swap-card-topline">
+                  <Database size={19} />
+                  <span>岗位优先级</span>
+                </div>
+                <div className="swap-card-body">
+                  <h3>{jobInfo?.count ?? 0} 条 JD 会被压成投递顺序</h3>
+                  <ul className="swap-metric-list">
+                    <li>
+                      <strong>冲刺</strong>
+                      <span>能力接近但需要补关键词</span>
+                    </li>
+                    <li>
+                      <strong>匹配</strong>
+                      <span>经历和硬要求直接对齐</span>
+                    </li>
+                    <li>
+                      <strong>稳妥</strong>
+                      <span>投递成本低，适合保底</span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </Card>
+          </CardSwap>
+        </aside>
       </section>
 
       {analysis ? (
@@ -383,19 +436,12 @@ export default function App() {
               selectedMatch={selectedMatch}
               selectedId={selectedId}
               onSelectJob={setSelectedId}
+              activeTab={activeResultsTab}
+              onTabChange={setActiveResultsTab}
             />
           </section>
         </FadeContent>
-      ) : (
-        <FadeContent>
-          <section className="empty-preview">
-            <div>
-              <GradientText>匹配结果会在这里展开</GradientText>
-              <p>先上传简历。系统会从后端岗位库里筛出值得优先投递的机会。</p>
-            </div>
-          </section>
-        </FadeContent>
-      )}
+      ) : null}
     </main>
   );
 }
@@ -404,56 +450,92 @@ function ResultsDashboard({
   analysis,
   selectedMatch,
   selectedId,
-  onSelectJob
+  onSelectJob,
+  activeTab,
+  onTabChange
 }: {
   analysis: AnalysisResponse;
   selectedMatch?: JobMatch;
   selectedId: string;
   onSelectJob: (id: string) => void;
+  activeTab: ResultsTab;
+  onTabChange: (tab: ResultsTab) => void;
 }) {
   const coaching = analysis.tencentCoaching;
   const tailoring = coaching?.jobTailoring.find((item) => item.jobId === selectedMatch?.job.id);
   const interviewPrep = coaching?.interviewPrep.find((item) => item.jobId === selectedMatch?.job.id);
+  const activeTabLabel = resultTabs.find((tab) => tab.id === activeTab)?.label ?? resultTabs[0].label;
 
   return (
     <section className="results-dashboard" aria-label="匹配结果">
       <div className="results-headline">
-        <SectionTitle eyebrow="Tencent shortlist" title="推荐主线" />
-        <p>先看最值得投的岗位，再顺着证据、风险和下一步动作改简历。</p>
+        <SectionTitle eyebrow="Tencent shortlist" title="推荐结果" />
+        <p>先选岗位，再按推荐、简历、面试和模拟问答拆开看，避免所有建议挤在一屏里。</p>
       </div>
 
       <div className="opportunity-layout">
         <aside className="opportunity-rail" aria-label="推荐岗位列表">
           <MatchList matches={analysis.matches} selectedId={selectedId} onSelectJob={onSelectJob} />
         </aside>
-        {selectedMatch ? <SelectedOpportunity match={selectedMatch} /> : <EmptyResults />}
+        <div className="results-tab-stack">
+          <div className="results-tabs" role="tablist" aria-label="结果内容">
+            {resultTabs.map((tab) => (
+              <button
+                key={tab.id}
+                id={`results-tab-${tab.id}`}
+                className={`result-tab ${activeTab === tab.id ? "active" : ""}`}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === tab.id}
+                aria-controls={`results-panel-${tab.id}`}
+                onClick={() => onTabChange(tab.id)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          <div
+            className="results-tab-panel"
+            id={`results-panel-${activeTab}`}
+            role="tabpanel"
+            aria-label={activeTabLabel}
+            aria-labelledby={`results-tab-${activeTab}`}
+          >
+            {activeTab === "overview" ? (
+              selectedMatch ? <SelectedOpportunity match={selectedMatch} /> : <EmptyResults />
+            ) : null}
+
+            {activeTab === "resume" ? (
+              <div className="tab-panel-grid">
+                <CoachSection eyebrow="Tencent resume" title="简历诊断">
+                  <ResumeReviewPanel review={coaching?.resumeReview} />
+                </CoachSection>
+                <CoachSection eyebrow="Targeted resume" title="岗位定制">
+                  {selectedMatch ? <JobTailoringPanel match={selectedMatch} tailoring={tailoring} /> : <EmptyResults />}
+                </CoachSection>
+              </div>
+            ) : null}
+
+            {activeTab === "interview" ? (
+              <CoachSection eyebrow="Interview prep" title="面试准备">
+                {selectedMatch ? <InterviewPrepPanel match={selectedMatch} prep={interviewPrep} /> : <EmptyResults />}
+              </CoachSection>
+            ) : null}
+
+            {activeTab === "mock" ? (
+              <div className="tab-panel-grid">
+                <CoachSection eyebrow="Mock interview" title="模拟面试">
+                  <MockInterviewPanel questions={coaching?.mockInterview ?? []} />
+                </CoachSection>
+                <CoachSection eyebrow="Group & HR" title="群面 / HR 面">
+                  <GroupHrPanel prep={coaching?.groupAndHrPrep} />
+                </CoachSection>
+              </div>
+            ) : null}
+          </div>
+        </div>
       </div>
-
-      <section className="coaching-sections" aria-label="求职辅导">
-        <CoachSection eyebrow="Tencent resume" title="简历诊断">
-          <ResumeReviewPanel review={coaching?.resumeReview} />
-        </CoachSection>
-
-        {selectedMatch ? (
-          <CoachSection eyebrow="Targeted resume" title="岗位定制">
-            <JobTailoringPanel match={selectedMatch} tailoring={tailoring} />
-          </CoachSection>
-        ) : null}
-
-        {selectedMatch ? (
-          <CoachSection eyebrow="Interview prep" title="面试准备">
-            <InterviewPrepPanel match={selectedMatch} prep={interviewPrep} />
-          </CoachSection>
-        ) : null}
-
-        <CoachSection eyebrow="Mock interview" title="模拟面试">
-          <MockInterviewPanel questions={coaching?.mockInterview ?? []} />
-        </CoachSection>
-
-        <CoachSection eyebrow="Group & HR" title="群面 / HR 面">
-          <GroupHrPanel prep={coaching?.groupAndHrPrep} />
-        </CoachSection>
-      </section>
     </section>
   );
 }
@@ -515,34 +597,16 @@ function EmptyResults() {
   );
 }
 
-function HomeScreen({
-  health,
-  jobInfo,
-  onEnter
-}: {
-  health: HealthInfo | null;
-  jobInfo: JobInfo | null;
-  onEnter: () => void;
-}) {
+function HomeScreen({ onEnter }: { onEnter: () => void }) {
   return (
     <section className="home-screen" aria-label="Offer 捕手首页">
-      <nav className="home-topbar" aria-label="应用状态">
+      <nav className="home-topbar" aria-label="主导航">
         <div className="brand-lockup home-brand">
           <Sparkles size={18} />
           <span>Offer 捕手</span>
         </div>
-        <div className="status-row">
-          <StatusPill icon={<Database size={15} />} label={`${jobInfo?.count ?? 0} 个岗位`} />
-          <StatusPill
-            icon={health?.hasApiKey ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
-            label={health?.hasApiKey ? "服务已连接" : "待配置"}
-            tone={health?.hasApiKey ? "good" : "warn"}
-          />
-          <StatusPill label={health?.model ?? "qwen-plus"} quiet />
-        </div>
       </nav>
       <div className="home-focus">
-        <p className="home-kicker">Resume to offer shortlist</p>
         <h1 className="sr-only">Offer 捕手</h1>
         <TrueFocus
           sentence="Offer 捕手"
@@ -552,13 +616,18 @@ function HomeScreen({
           animationDuration={0.7}
           pauseBetweenAnimations={1.1}
         />
-        <button className="home-cta primary-button" onClick={onEnter}>
-          <span className="button-glare" />
-          <span className="button-content">
-            <WandSparkles size={18} />
-            开始捕捉 Offer
-          </span>
-        </button>
+        <InteractiveHoverButton onClick={onEnter}>
+          开始捕捉 Offer
+        </InteractiveHoverButton>
+        <div className="home-curved-loop">
+          <CurvedLoop
+            marqueeText="✦ Resume to Offer Shortlist ✦"
+            speed={1.5}
+            curveAmount={300}
+            direction="left"
+            interactive={true}
+          />
+        </div>
       </div>
     </section>
   );
@@ -600,25 +669,6 @@ function GlareButton({
       <span className="button-glare" />
       <span className="button-content">{children}</span>
     </button>
-  );
-}
-
-function StatusPill({
-  icon,
-  label,
-  tone,
-  quiet
-}: {
-  icon?: ReactNode;
-  label: string;
-  tone?: "good" | "warn";
-  quiet?: boolean;
-}) {
-  return (
-    <div className={`status-pill ${tone ?? ""} ${quiet ? "quiet" : ""}`}>
-      {icon}
-      <span>{label}</span>
-    </div>
   );
 }
 
