@@ -17,7 +17,7 @@ export default function InteractiveHoverButton({
         <span className="ih-dot" />
         <span className="ih-label">{children}</span>
       </div>
-      <div className="ih-btn-hover">
+      <div className="ih-btn-hover" aria-hidden="true">
         <span>{children}</span>
         <ArrowRight size={16} />
       </div>

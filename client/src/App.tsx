@@ -2,8 +2,10 @@ import {
   AlertCircle,
   ArrowUpRight,
   CheckCircle2,
+  Database,
   FileText,
   Loader2,
+  Radar,
   Sparkles,
   UploadCloud,
   WandSparkles
@@ -16,6 +18,7 @@ import {
   useMemo,
   useState
 } from "react";
+import CardSwap, { Card } from "./components/CardSwap";
 import CurvedLoop from "./components/CurvedLoop";
 import InteractiveHoverButton from "./components/InteractiveHoverButton";
 import TrueFocus from "./components/TrueFocus";
@@ -304,61 +307,124 @@ export default function App() {
         </FadeContent>
       ) : null}
 
-      <section className={`starter ${analysis ? "starter-with-results" : ""}`}>
-        <SpotlightCard className="upload-card">
-          <div className="card-heading">
-            <div>
-              <span>Step 01</span>
-              <h2>放入你的简历</h2>
-            </div>
-            <FileText size={22} />
+      <section className={`starter upload-stage ${analysis ? "starter-with-results" : ""}`}>
+        <div className="upload-workbench">
+          <div className="upload-intro">
+            <span>Step 01</span>
+            <h2>放入你的简历</h2>
+            <p>先把简历丢进来，再开始捕获岗位信号。样例只保留一个小入口，方便快速试跑。</p>
           </div>
 
-          <label className="upload-zone">
+          <label className="resume-dropzone">
             <input
               type="file"
               accept=".pdf,.docx,.txt,.md,.json,.csv,text/*,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
               onChange={handleResumeFile}
             />
-            <UploadCloud size={28} />
-            <strong>{extracting ? "正在读取文件" : fileName || "上传 PDF / DOCX / TXT"}</strong>
-            <span>也可以在下方直接粘贴简历正文</span>
+            <span className="resume-dropzone-icon">
+              <UploadCloud size={24} />
+            </span>
+            <span>上传简历</span>
+            <strong>{extracting ? "正在读取文件" : fileName || "PDF / DOCX / TXT"}</strong>
           </label>
 
           <textarea
+            id="resume-text"
+            className="resume-paste-field"
             value={resumeText}
             onChange={(event) => setResumeText(event.target.value)}
-            placeholder="粘贴简历内容，或先载入样例体验完整流程..."
+            placeholder="也可以直接粘贴简历正文..."
           />
 
-          <div className="action-row">
-            <button className="secondary-button" onClick={() => setResumeText(exampleResume)}>
+          <div className="capture-command-row">
+            <button className="sample-button" onClick={() => setResumeText(exampleResume)}>
               <FileText size={16} />
               载入样例
             </button>
             <GlareButton disabled={analyzing || extracting || resumeText.trim().length < 30} onClick={runAnalysis}>
               {analyzing ? <Loader2 className="spin" size={17} /> : <WandSparkles size={17} />}
-              {analyzing ? "分析中" : "开始匹配"}
+              {analyzing ? "捕获中" : "开始捕获"}
             </GlareButton>
           </div>
 
-          <div className="source-line">
+          <div className="source-line upload-source-line">
             <span>岗位库</span>
             <strong>{jobInfo?.count ?? 0} 条</strong>
             <small>{shortenSource(jobInfo?.source)}</small>
           </div>
-        </SpotlightCard>
+        </div>
 
-        <SpotlightCard className="progress-card">
-          <div className="card-heading">
-            <div>
-              <span>Step 02</span>
-              <h2>分析进度</h2>
-            </div>
-            <Sparkles size={22} />
-          </div>
-          <ProgressList trace={analysis?.trace} active={analyzing} />
-        </SpotlightCard>
+        <aside className="swap-stage" aria-label="捕获过程预览">
+          <CardSwap
+            width={860}
+            height={560}
+            cardDistance={92}
+            verticalDistance={78}
+            delay={4200}
+            pauseOnHover
+            skewAmount={4}
+            easing="elastic"
+          >
+            <Card customClass="swap-card swap-card-jd">
+              <div className="swap-card-inner">
+                <div className="swap-card-topline">
+                  <Radar size={19} />
+                  <span>JD 硬要求</span>
+                </div>
+                <div className="swap-card-body">
+                  <h3>先抓真正筛人的条件</h3>
+                  <ul className="swap-insight-list">
+                    <li>技能栈是否直接命中岗位描述里的工具和语言。</li>
+                    <li>项目经历是否能证明完整交付，而不只是参与。</li>
+                    <li>城市、岗位类型和截止时间是否值得优先投递。</li>
+                  </ul>
+                </div>
+              </div>
+            </Card>
+            <Card customClass="swap-card swap-card-rewrite">
+              <div className="swap-card-inner">
+                <div className="swap-card-topline">
+                  <Sparkles size={19} />
+                  <span>简历改写方向</span>
+                </div>
+                <div className="swap-card-body">
+                  <h3>把经历改成招聘方能判断的证据</h3>
+                  <div className="rewrite-preview">
+                    <span>原表达</span>
+                    <p>参与校园二手平台前端开发。</p>
+                    <span>建议方向</span>
+                    <p>负责发布、筛选、消息入口组件，沉淀可复用表单和状态管理方案。</p>
+                  </div>
+                </div>
+              </div>
+            </Card>
+            <Card customClass="swap-card swap-card-priority">
+              <div className="swap-card-inner">
+                <div className="swap-card-topline">
+                  <Database size={19} />
+                  <span>岗位优先级</span>
+                </div>
+                <div className="swap-card-body">
+                  <h3>{jobInfo?.count ?? 0} 条 JD 会被压成投递顺序</h3>
+                  <ul className="swap-metric-list">
+                    <li>
+                      <strong>冲刺</strong>
+                      <span>能力接近但需要补关键词</span>
+                    </li>
+                    <li>
+                      <strong>匹配</strong>
+                      <span>经历和硬要求直接对齐</span>
+                    </li>
+                    <li>
+                      <strong>稳妥</strong>
+                      <span>投递成本低，适合保底</span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </Card>
+          </CardSwap>
+        </aside>
       </section>
 
       {analysis ? (
