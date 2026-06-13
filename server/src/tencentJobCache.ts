@@ -48,12 +48,12 @@ export async function loadTencentCachedJobs(profile: CandidateProfile) {
   const db = await openCacheDb();
   try {
     const ranked = rankCachedPositions(db, profile);
-    await ensureDetailsForCandidates(db, ranked.slice(0, detailCandidateCount()));
+    await ensureDetailsForCandidates(db, selectRankedPositionsByCategory(ranked, detailCandidateCount()));
     const refreshed = rankCachedPositions(db, profile);
-    const jobs = refreshed
-      .map((item) => rowToJob(item.row))
-      .filter(isJobWithDetail)
-      .slice(0, topN());
+    const jobs = selectDetailedJobsByCategory(
+      refreshed.map((item) => rowToJob(item.row)).filter(isJobWithDetail),
+      topN()
+    );
 
     if (jobs.length === 0) {
       throw new Error("腾讯岗位缓存中没有可推荐的完整 JD。");
@@ -236,8 +236,37 @@ function rankCachedPositions(db: DatabaseSync, profile: CandidateProfile): Ranke
         matchedTerms
       };
     })
-    .sort((a, b) => b.score - a.score)
-    .slice(0, Math.max(detailCandidateCount(), topN()));
+    .sort((a, b) => b.score - a.score);
+}
+
+function selectRankedPositionsByCategory(positions: RankedPosition[], limitPerCategory = topN()) {
+  const internships = positions
+    .filter((item) => getJobCategory(rowRecruitType(item.row)) === "internship")
+    .slice(0, limitPerCategory);
+  const campus = positions
+    .filter((item) => getJobCategory(rowRecruitType(item.row)) === "campus")
+    .slice(0, limitPerCategory);
+  return [...internships, ...campus];
+}
+
+export function selectDetailedJobsByCategory<T extends Pick<Job, "type">>(jobs: T[], limitPerCategory = topN()) {
+  const internships = jobs.filter((job) => getJobCategory(job.type) === "internship").slice(0, limitPerCategory);
+  const campus = jobs.filter((job) => getJobCategory(job.type) === "campus").slice(0, limitPerCategory);
+  return [...internships, ...campus];
+}
+
+function rowRecruitType(row: CacheRow) {
+  const summary = parseJson<TencentPosition>(row.summary_json, {});
+  return (
+    stringValue(summary.recruit_label) ||
+    stringValue(summary.project_name) ||
+    row.search_text
+  );
+}
+
+function getJobCategory(type: string) {
+  const normalized = type.toLowerCase();
+  return normalized.includes("实习") || normalized.includes("intern") ? "internship" : "campus";
 }
 
 function rowToJob(row: CacheRow): Partial<Job> | null {
@@ -402,6 +431,6 @@ function unique(values: string[]) {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
 }
 
-function isJobWithDetail(value: Partial<Job> | null): value is Partial<Job> {
+function isJobWithDetail(value: Partial<Job> | null): value is Job {
   return Boolean(value?.id && value.title && (value.description || value.requirements));
 }

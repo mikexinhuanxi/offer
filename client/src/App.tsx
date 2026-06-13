@@ -1,21 +1,23 @@
 import {
   AlertCircle,
   ArrowUpRight,
+  BriefcaseBusiness,
   CheckCircle2,
   Database,
   FileText,
   Loader2,
   Radar,
+  SlidersHorizontal,
   Sparkles,
   UploadCloud,
   WandSparkles
 } from "lucide-react";
 import {
   type ChangeEvent,
+  type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
   useEffect,
-  useMemo,
   useState
 } from "react";
 import CardSwap, { Card } from "./components/CardSwap";
@@ -162,6 +164,12 @@ interface AnalysisResponse {
 
 type AppView = "home" | "upload" | "results";
 type ResultsTab = "overview" | "resume" | "interview" | "mock";
+type JobCategory = "internship" | "campus";
+type JobFilterOption = {
+  id: string;
+  label: string;
+  count: number;
+};
 
 const resultTabs: Array<{ id: ResultsTab; label: string }> = [
   { id: "overview", label: "推荐概览" },
@@ -200,10 +208,6 @@ export default function App() {
   const [view, setView] = useState<AppView>("home");
   const [activeResultsTab, setActiveResultsTab] = useState<ResultsTab>("overview");
   const [error, setError] = useState("");
-
-  const selectedMatch = useMemo(() => {
-    return analysis?.matches.find((match) => match.job.id === selectedId) ?? analysis?.matches[0];
-  }, [analysis, selectedId]);
 
   useEffect(() => {
     void refreshStatus();
@@ -280,9 +284,40 @@ export default function App() {
     );
   }
 
+  if (view === "results" && analysis) {
+    return (
+      <main className="app-shell results-page-shell">
+        <section className="hero hero-compact results-hero">
+          <nav className="topbar" aria-label="主导航">
+            <div className="brand-lockup">
+              <Sparkles size={18} />
+              <GradientText>Offer 捕手</GradientText>
+            </div>
+          </nav>
+        </section>
+
+        {error ? <ErrorBanner message={error} /> : null}
+
+        <FadeContent>
+          <section className="results-shell">
+            <ProfileSummary profile={analysis.profile} />
+            <ScreeningReport analysis={analysis} />
+            <ResultsDashboard
+              analysis={analysis}
+              selectedId={selectedId}
+              onSelectJob={setSelectedId}
+              activeTab={activeResultsTab}
+              onTabChange={setActiveResultsTab}
+            />
+          </section>
+        </FadeContent>
+      </main>
+    );
+  }
+
   return (
-    <main className="app-shell">
-      <section className={`hero ${analysis ? "hero-compact" : ""}`}>
+    <main className="app-shell upload-shell">
+      <section className="hero">
         <nav className="topbar" aria-label="主导航">
           <div className="brand-lockup">
             <Sparkles size={18} />
@@ -298,16 +333,9 @@ export default function App() {
         </div>
       </section>
 
-      {error ? (
-        <FadeContent>
-          <section className="error-banner">
-            <AlertCircle size={17} />
-            <span>{error}</span>
-          </section>
-        </FadeContent>
-      ) : null}
+      {error ? <ErrorBanner message={error} /> : null}
 
-      <section className={`starter upload-stage ${analysis ? "starter-with-results" : ""}`}>
+      <section className="starter upload-stage">
         <div className="upload-workbench">
           <div className="upload-intro">
             <span>Step 01</span>
@@ -356,12 +384,11 @@ export default function App() {
 
         <aside className="swap-stage" aria-label="捕获过程预览">
           <CardSwap
-            width={860}
-            height={560}
-            cardDistance={92}
-            verticalDistance={78}
+            width={780}
+            height={500}
+            cardDistance={78}
+            verticalDistance={62}
             delay={4200}
-            pauseOnHover
             skewAmount={4}
             easing="elastic"
           >
@@ -426,56 +453,107 @@ export default function App() {
           </CardSwap>
         </aside>
       </section>
-
-      {analysis ? (
-        <FadeContent>
-          <section className="results-shell">
-            <ProfileSummary profile={analysis.profile} />
-            <ResultsDashboard
-              analysis={analysis}
-              selectedMatch={selectedMatch}
-              selectedId={selectedId}
-              onSelectJob={setSelectedId}
-              activeTab={activeResultsTab}
-              onTabChange={setActiveResultsTab}
-            />
-          </section>
-        </FadeContent>
-      ) : null}
     </main>
   );
 }
 
 function ResultsDashboard({
   analysis,
-  selectedMatch,
   selectedId,
   onSelectJob,
   activeTab,
   onTabChange
 }: {
   analysis: AnalysisResponse;
-  selectedMatch?: JobMatch;
   selectedId: string;
   onSelectJob: (id: string) => void;
   activeTab: ResultsTab;
   onTabChange: (tab: ResultsTab) => void;
 }) {
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [selectedCategories, setSelectedCategories] = useState<JobCategory[]>([]);
+  const [selectedCities, setSelectedCities] = useState<string[]>([]);
+  const categoryOptions = buildCategoryOptions(analysis.matches);
+  const cityOptions = buildCityOptions(analysis.matches);
+  const visibleMatches = buildFilteredShortlist(analysis.matches, selectedCategories, selectedCities);
+  const selectedMatch =
+    visibleMatches.find((match) => match.job.id === selectedId) ?? visibleMatches[0] ?? analysis.matches[0];
   const coaching = analysis.tencentCoaching;
   const tailoring = coaching?.jobTailoring.find((item) => item.jobId === selectedMatch?.job.id);
   const interviewPrep = coaching?.interviewPrep.find((item) => item.jobId === selectedMatch?.job.id);
   const activeTabLabel = resultTabs.find((tab) => tab.id === activeTab)?.label ?? resultTabs[0].label;
+  const activeFilterCount = selectedCategories.length + selectedCities.length;
+
+  useEffect(() => {
+    if (selectedMatch && selectedMatch.job.id !== selectedId) {
+      onSelectJob(selectedMatch.job.id);
+    }
+  }, [selectedId, selectedMatch, onSelectJob]);
+
+  function toggleCategory(category: JobCategory) {
+    setSelectedCategories((current) => toggleArrayValue(current, category));
+  }
+
+  function toggleCity(city: string) {
+    setSelectedCities((current) => toggleArrayValue(current, city));
+  }
+
+  function clearFilters() {
+    setSelectedCategories([]);
+    setSelectedCities([]);
+  }
 
   return (
     <section className="results-dashboard" aria-label="匹配结果">
       <div className="results-headline">
         <SectionTitle eyebrow="Tencent shortlist" title="推荐结果" />
-        <p>先选岗位，再按推荐、简历、面试和模拟问答拆开看，避免所有建议挤在一屏里。</p>
+        <p>按岗位类别和城市筛选短名单，只展示符合当前条件的真实命中岗位。</p>
       </div>
 
       <div className="opportunity-layout">
         <aside className="opportunity-rail" aria-label="推荐岗位列表">
-          <MatchList matches={analysis.matches} selectedId={selectedId} onSelectJob={onSelectJob} />
+          <div className="opportunity-rail-heading">
+            <div>
+              <span>Job shortlist</span>
+              <h2>推荐岗位</h2>
+            </div>
+            <button
+              className={`filter-trigger ${filterOpen ? "active" : ""}`}
+              type="button"
+              aria-label="筛选推荐岗位"
+              aria-expanded={filterOpen}
+              onClick={() => setFilterOpen((open) => !open)}
+            >
+              <SlidersHorizontal size={15} />
+              <span>筛选</span>
+              {activeFilterCount > 0 ? <strong>{activeFilterCount}</strong> : null}
+            </button>
+          </div>
+          {filterOpen ? (
+            <ShortlistFilterPanel
+              categoryOptions={categoryOptions}
+              cityOptions={cityOptions}
+              selectedCategories={selectedCategories}
+              selectedCities={selectedCities}
+              onToggleCategory={toggleCategory}
+              onToggleCity={toggleCity}
+              onClear={clearFilters}
+            />
+          ) : null}
+          {activeFilterCount > 0 ? (
+            <FilterChips
+              selectedCategories={selectedCategories}
+              selectedCities={selectedCities}
+              onToggleCategory={toggleCategory}
+              onToggleCity={toggleCity}
+            />
+          ) : null}
+          <MatchList
+            icon={<BriefcaseBusiness size={15} />}
+            matches={visibleMatches}
+            selectedId={selectedMatch?.job.id ?? ""}
+            onSelectJob={onSelectJob}
+          />
         </aside>
         <div className="results-tab-stack">
           <div className="results-tabs" role="tablist" aria-label="结果内容">
@@ -573,11 +651,16 @@ function SelectedOpportunity({ match }: { match: JobMatch }) {
         <small>{match.recommendation?.sourceLabel || "岗位信息来自后端岗位源。"}</small>
       </div>
 
-      <div className="opportunity-grid">
-        <InsightBlock title="JD 硬要求" items={interpretation?.hardRequirements ?? [match.job.requirements]} />
-        <InsightBlock title="简历侧重" items={interpretation?.resumeFocus ?? match.resumeActions} />
-        <InsightBlock title="风险缺口" items={match.risks} warn />
-        <InsightBlock title="下一步动作" items={match.resumeActions} />
+      <DecisionMetrics match={match} />
+
+      <div className="opportunity-grid compact-decision-grid">
+        <ScoreBreakdownTable breakdown={match.breakdown} />
+        <KeywordMappingTable
+          keywords={interpretation?.hardRequirements ?? splitRequirementText(match.job.requirements)}
+          missingKeywords={match.missingKeywords}
+        />
+        <CompactListPanel title="风险缺口" items={match.risks} warn />
+        <CompactListPanel title="下一步动作" items={match.resumeActions} />
       </div>
 
       <div className="rewrite-box">
@@ -639,6 +722,17 @@ function GradientText({ children }: { children: ReactNode }) {
 
 function FadeContent({ children }: { children: ReactNode }) {
   return <div className="fade-content">{children}</div>;
+}
+
+function ErrorBanner({ message }: { message: string }) {
+  return (
+    <FadeContent>
+      <section className="error-banner">
+        <AlertCircle size={17} />
+        <span>{message}</span>
+      </section>
+    </FadeContent>
+  );
 }
 
 function SpotlightCard({ className, children }: { className: string; children: ReactNode }) {
@@ -726,6 +820,75 @@ function ProfileSummary({ profile }: { profile: CandidateProfile }) {
   );
 }
 
+function ScreeningReport({ analysis }: { analysis: AnalysisResponse }) {
+  const review = analysis.tencentCoaching?.resumeReview;
+  const topMatches = analysis.matches.slice(0, 5);
+  const highlights = normalizeReportItems(review?.highlights, [
+    "已有项目、实习或课程经历可作为初筛判断素材。"
+  ]);
+  const issues = normalizeReportItems(
+    [
+      ...(review?.issues ?? []),
+      ...topMatches.flatMap((match) => match.risks)
+    ],
+    ["简历需要补充更清晰的岗位关键词、个人动作和可验证结果。"]
+  );
+  const actions = normalizeReportItems(review?.actions, [
+    "按 STAR 梳理最核心项目，写清背景、任务、动作和结果。",
+    "把目标岗位 JD 关键词映射到真实项目或实习证据里。"
+  ]);
+  const principles = normalizeReportItems(review?.rewritePrinciples, [
+    "只基于真实经历优化表达，不编造项目、奖项、公司或数据。"
+  ]);
+  const verdict = buildScreeningVerdict(issues.length, highlights.length, topMatches.length);
+  const topScore = topMatches.reduce((highest, match) => Math.max(highest, match.score), 0);
+  const averageScreening =
+    topMatches.length > 0
+      ? Math.round(topMatches.reduce((total, match) => total + match.screeningProbability, 0) / topMatches.length)
+      : 0;
+  const missingKeywordCount = new Set(topMatches.flatMap((match) => match.missingKeywords)).size;
+
+  return (
+    <section className="screening-report" aria-label="简历初筛评估报告">
+      <div className="screening-report-head">
+        <span>Tencent resume check</span>
+        <h2>简历初筛评估报告</h2>
+        <p>先看简历是否能被筛选者快速判断，再决定投哪些岗位和怎么改表达。</p>
+      </div>
+      <div className="screening-verdict">
+        <span>初筛判断</span>
+        <strong>{verdict.title}</strong>
+        <p>{verdict.detail}</p>
+      </div>
+      <div className="screening-metrics" aria-label="初筛指标">
+        <MiniMetric label="最高匹配" value={topScore ? `${topScore}` : "暂无"} />
+        <MiniMetric label="平均初筛" value={averageScreening ? `${averageScreening}%` : "暂无"} />
+        <MiniMetric label="关键词缺口" value={`${missingKeywordCount} 个`} />
+        <MiniMetric label="推荐岗位" value={`${topMatches.length} 个`} />
+      </div>
+      <div className="screening-grid">
+        <ReportBlock title="可保留亮点" items={highlights} />
+        <ReportBlock title="初筛风险" items={issues} warn />
+        <ReportBlock title="优先修改" items={actions} />
+        <ReportBlock title="腾讯简历原则" items={principles} />
+      </div>
+    </section>
+  );
+}
+
+function ReportBlock({ title, items, warn = false }: { title: string; items: string[]; warn?: boolean }) {
+  return (
+    <div className={`report-block ${warn ? "warn" : ""}`}>
+      <strong>{title}</strong>
+      <ul>
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function MiniMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="mini-metric">
@@ -744,43 +907,300 @@ function SectionTitle({ eyebrow, title }: { eyebrow: string; title: string }) {
   );
 }
 
+function ShortlistFilterPanel({
+  categoryOptions,
+  cityOptions,
+  selectedCategories,
+  selectedCities,
+  onToggleCategory,
+  onToggleCity,
+  onClear
+}: {
+  categoryOptions: Array<JobFilterOption & { id: JobCategory }>;
+  cityOptions: JobFilterOption[];
+  selectedCategories: JobCategory[];
+  selectedCities: string[];
+  onToggleCategory: (category: JobCategory) => void;
+  onToggleCity: (city: string) => void;
+  onClear: () => void;
+}) {
+  return (
+    <div className="shortlist-filter-panel" aria-label="推荐岗位筛选条件">
+      <FilterOptionGroup
+        title="岗位类别"
+        options={categoryOptions}
+        selectedValues={selectedCategories}
+        onToggle={(value) => onToggleCategory(value as JobCategory)}
+      />
+      <FilterOptionGroup title="工作地点" options={cityOptions} selectedValues={selectedCities} onToggle={onToggleCity} />
+      <div className="filter-actions">
+        <button type="button" onClick={onClear}>
+          清空
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function FilterOptionGroup({
+  title,
+  options,
+  selectedValues,
+  onToggle
+}: {
+  title: string;
+  options: JobFilterOption[];
+  selectedValues: string[];
+  onToggle: (value: string) => void;
+}) {
+  return (
+    <fieldset className="filter-option-group">
+      <legend>{title}</legend>
+      <div>
+        {options.map((option) => (
+          <label key={option.id}>
+            <input
+              type="checkbox"
+              aria-label={option.label}
+              checked={selectedValues.includes(option.id)}
+              onChange={() => onToggle(option.id)}
+            />
+            <span>{option.label}</span>
+            <small>{option.count}</small>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+function FilterChips({
+  selectedCategories,
+  selectedCities,
+  onToggleCategory,
+  onToggleCity
+}: {
+  selectedCategories: JobCategory[];
+  selectedCities: string[];
+  onToggleCategory: (category: JobCategory) => void;
+  onToggleCity: (city: string) => void;
+}) {
+  const chips = [
+    ...selectedCategories.map((category) => ({
+      key: `category-${category}`,
+      label: displayJobCategory(category),
+      onRemove: () => onToggleCategory(category)
+    })),
+    ...selectedCities.map((city) => ({
+      key: `city-${city}`,
+      label: city,
+      onRemove: () => onToggleCity(city)
+    }))
+  ];
+
+  return (
+    <div className="filter-chip-row" aria-label="已选筛选条件">
+      {chips.map((chip) => (
+        <button key={chip.key} type="button" onClick={chip.onRemove}>
+          {chip.label}
+          <span aria-hidden="true">×</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function MatchList({
+  icon,
   matches,
   selectedId,
   onSelectJob
 }: {
+  icon: ReactNode;
   matches: JobMatch[];
   selectedId: string;
   onSelectJob: (id: string) => void;
 }) {
+  function handleRowKeyDown(event: KeyboardEvent<HTMLTableRowElement>, id: string) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onSelectJob(id);
+    }
+  }
+
   return (
-    <div className="match-list">
-      {matches.map((match) => (
-        <button
-          key={match.job.id}
-          className={`match-card ${selectedId === match.job.id ? "selected" : ""}`}
-          onClick={() => onSelectJob(match.job.id)}
-        >
-          <div className="match-main">
-            <div className="match-heading">
-              <strong>{match.job.title}</strong>
-              <span>{match.job.type}</span>
-            </div>
-            <p>
-              {match.job.company} · {match.job.city} · {match.job.type}
-            </p>
-            <p className="match-reason">
-              {match.recommendation?.matchReason || match.reasons.slice(0, 2).join("；")}
-            </p>
-            <div className="tag-row">
-              {match.missingKeywords.slice(0, 3).map((keyword) => (
-                <span key={keyword}>{keyword}</span>
-              ))}
-            </div>
+    <section className="match-column" aria-label="推荐岗位短名单">
+      <div className="match-column-title">
+        {icon}
+        <h3>岗位短名单</h3>
+        <span>{matches.length} 个</span>
+      </div>
+      <div className="match-list">
+        {matches.length > 0 ? (
+          <div className="match-table-wrap">
+            <table className="match-table">
+              <thead>
+                <tr>
+                  <th scope="col">岗位</th>
+                  <th scope="col">匹配</th>
+                  <th scope="col">初筛</th>
+                  <th scope="col">缺口</th>
+                </tr>
+              </thead>
+              <tbody>
+                {matches.map((match) => (
+                  <tr
+                    key={match.job.id}
+                    className={`match-table-row ${selectedId === match.job.id ? "selected" : ""}`}
+                    role="button"
+                    tabIndex={0}
+                    aria-current={selectedId === match.job.id ? "true" : undefined}
+                    onClick={() => onSelectJob(match.job.id)}
+                    onKeyDown={(event) => handleRowKeyDown(event, match.job.id)}
+                  >
+                    <td>
+                      <strong>{match.job.title}</strong>
+                      <span>
+                        {match.job.city} · {match.job.type}
+                      </span>
+                    </td>
+                    <td>
+                      <ScoreBar value={match.score} />
+                    </td>
+                    <td>
+                      <span className={match.screeningProbability >= 70 ? "table-pill" : "table-pill warn"}>
+                        {match.screeningProbability}%
+                      </span>
+                    </td>
+                    <td>
+                      <span className={match.missingKeywords.length > 2 ? "table-pill warn" : "table-pill"}>
+                        {match.missingKeywords.length}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </button>
-      ))}
-    </div>
+        ) : (
+          <div className="empty-match-column">
+            <strong>暂无岗位</strong>
+            <p>换一份简历或刷新岗位库后再试。</p>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function DecisionMetrics({ match }: { match: JobMatch }) {
+  const metrics = [
+    { label: "匹配分", value: `${match.score}` },
+    { label: "初筛概率", value: `${match.screeningProbability}%` },
+    { label: "关键词缺口", value: `${match.missingKeywords.length}` },
+    { label: "改写动作", value: `${match.resumeActions.length}` },
+    { label: "优先级", value: match.fitLevel }
+  ];
+
+  return (
+    <section className="decision-metrics" aria-label="决策指标">
+      <span>决策指标</span>
+      <div>
+        {metrics.map((metric) => (
+          <MiniMetric key={metric.label} label={metric.label} value={metric.value} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ScoreBreakdownTable({ breakdown }: { breakdown: ScoreBreakdown }) {
+  const rows = [
+    { label: "技能", value: breakdown.skills },
+    { label: "经历", value: breakdown.experience },
+    { label: "关键词", value: breakdown.keywords },
+    { label: "地点", value: breakdown.location },
+    { label: "成长性", value: breakdown.growth }
+  ];
+
+  return (
+    <section className="decision-panel">
+      <strong>评分拆解</strong>
+      <table className="decision-table">
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.label}>
+              <th scope="row">{row.label}</th>
+              <td>
+                <ScoreBar value={row.value} />
+              </td>
+              <td>{row.value}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
+function KeywordMappingTable({
+  keywords,
+  missingKeywords
+}: {
+  keywords: string[];
+  missingKeywords: string[];
+}) {
+  const normalizedMissing = new Set(missingKeywords.map((keyword) => keyword.toLowerCase()));
+  const rows = Array.from(new Set([...keywords, ...missingKeywords].map((item) => item.trim()).filter(Boolean))).slice(
+    0,
+    6
+  );
+
+  return (
+    <section className="decision-panel">
+      <strong>JD / 简历映射</strong>
+      <table className="decision-table keyword-table">
+        <tbody>
+          {rows.length > 0 ? (
+            rows.map((keyword) => {
+              const missing = normalizedMissing.has(keyword.toLowerCase());
+              return (
+                <tr key={keyword}>
+                  <th scope="row">{keyword}</th>
+                  <td>
+                    <span className={missing ? "table-pill warn" : "table-pill"}>{missing ? "待补" : "已命中"}</span>
+                  </td>
+                </tr>
+              );
+            })
+          ) : (
+            <tr>
+              <td>暂无可映射关键词</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
+function CompactListPanel({ title, items, warn = false }: { title: string; items: string[]; warn?: boolean }) {
+  return (
+    <section className={`decision-panel ${warn ? "warn" : ""}`}>
+      <strong>{title}</strong>
+      <ul className="compact-list">
+        {items.length > 0 ? items.slice(0, 4).map((item) => <li key={item}>{item}</li>) : <li>暂无</li>}
+      </ul>
+    </section>
+  );
+}
+
+function ScoreBar({ value }: { value: number }) {
+  return (
+    <span className="score-bar" aria-label={`${value} 分`}>
+      <span style={{ width: `${clampScore(value)}%` }} />
+      <b>{value}</b>
+    </span>
   );
 }
 
@@ -949,4 +1369,126 @@ function shortenSource(source?: string) {
   const normalized = source.replace(/\\/g, "/");
   const parts = normalized.split("/");
   return parts.slice(-2).join("/");
+}
+
+function normalizeReportItems(items?: string[], fallback: string[] = []) {
+  const source = items && items.length > 0 ? items : fallback;
+  return Array.from(new Set(source.map((item) => item.trim()).filter(Boolean))).slice(0, 4);
+}
+
+function splitRequirementText(requirements: string) {
+  return requirements
+    .split(/[，,、;；\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 6);
+}
+
+function clampScore(value: number) {
+  return Math.max(0, Math.min(100, value));
+}
+
+function buildScreeningVerdict(issueCount: number, highlightCount: number, matchCount: number) {
+  if (matchCount === 0) {
+    return {
+      title: "需要先补齐基础信息",
+      detail: "当前简历还不足以稳定映射到岗位 JD，建议先补项目职责、技能使用场景和结果证据。"
+    };
+  }
+  if (issueCount >= highlightCount + 2) {
+    return {
+      title: "有投递方向，但初筛证据偏弱",
+      detail: "建议先按报告里的风险和修改动作补强，再用岗位推荐做定向投递。"
+    };
+  }
+  return {
+    title: "具备进入初筛判断的基础",
+    detail: "简历已有可匹配素材，下一步重点是把真实经历写得更具体、更贴近目标 JD。"
+  };
+}
+
+function getJobCategory(type: string): JobCategory {
+  const normalized = type.toLowerCase();
+  if (normalized.includes("实习") || normalized.includes("intern")) {
+    return "internship";
+  }
+  return "campus";
+}
+
+function displayJobCategory(category: JobCategory) {
+  return category === "internship" ? "实习" : "校招";
+}
+
+function buildCategoryOptions(matches: JobMatch[]): Array<JobFilterOption & { id: JobCategory }> {
+  return [
+    {
+      id: "internship",
+      label: "实习",
+      count: matches.filter((match) => getJobCategory(match.job.type) === "internship").length
+    },
+    {
+      id: "campus",
+      label: "校招",
+      count: matches.filter((match) => getJobCategory(match.job.type) === "campus").length
+    }
+  ];
+}
+
+function buildCityOptions(matches: JobMatch[]): JobFilterOption[] {
+  const cityCounts = matches.reduce<Map<string, number>>((counts, match) => {
+    getJobCities(match.job.city).forEach((city) => {
+      counts.set(city, (counts.get(city) ?? 0) + 1);
+    });
+    return counts;
+  }, new Map());
+
+  return Array.from(cityCounts, ([city, count]) => ({
+    id: city,
+    label: city,
+    count
+  }));
+}
+
+function toggleArrayValue<T>(values: T[], value: T) {
+  return values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
+}
+
+function getJobCities(city: string) {
+  return Array.from(
+    new Set(
+      city
+        .split(/[\/／,，、;；]/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+    )
+  );
+}
+
+function buildFilteredShortlist(
+  matches: JobMatch[],
+  selectedCategories: JobCategory[],
+  selectedCities: string[],
+  limit = 5
+) {
+  const hasCategoryFilter = selectedCategories.length > 0;
+  const hasCityFilter = selectedCities.length > 0;
+  if (!hasCategoryFilter && !hasCityFilter) {
+    return matches.slice(0, limit);
+  }
+
+  const matching = matches.filter((match) => {
+    const categoryMatches = !hasCategoryFilter || selectedCategories.includes(getJobCategory(match.job.type));
+    const cityMatches = !hasCityFilter || selectedCities.some((city) => getJobCities(match.job.city).includes(city));
+    return categoryMatches && cityMatches;
+  });
+
+  return matching.slice(0, limit);
+}
+
+function firstMatchInCategory(matches: JobMatch[], category: JobCategory) {
+  return matches.find((match) => getJobCategory(match.job.type) === category);
+}
+
+function pickInitialJobCategory(matches: JobMatch[]): JobCategory {
+  return firstMatchInCategory(matches, "internship") ? "internship" : "campus";
 }

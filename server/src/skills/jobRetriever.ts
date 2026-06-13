@@ -25,7 +25,7 @@ export function retrieveJobs(profile: CandidateProfile, jobs: Partial<Job>[]): R
   const normalized = normalizeJobs(jobs);
   const terms = buildProfileTerms(profile);
 
-  return normalized
+  const ranked = normalized
     .map((job) => {
       const text = jobToText(job);
       const matchedTerms = terms.filter((term) => text.includes(term.toLowerCase()));
@@ -41,8 +41,11 @@ export function retrieveJobs(profile: CandidateProfile, jobs: Partial<Job>[]): R
         matchedTerms
       };
     })
-    .sort((a, b) => b.retrievalScore - a.retrievalScore)
-    .slice(0, 8);
+    .sort((a, b) => b.retrievalScore - a.retrievalScore);
+
+  const internships = ranked.filter((job) => getJobCategory(job.type) === "internship").slice(0, 5);
+  const campus = ranked.filter((job) => getJobCategory(job.type) === "campus").slice(0, 5);
+  return [...internships, ...campus];
 }
 
 function stringOrFallback(value: unknown, fallback: string) {
@@ -81,4 +84,9 @@ function jobToText(job: Job) {
   ]
     .join(" ")
     .toLowerCase();
+}
+
+function getJobCategory(type: string) {
+  const normalized = type.toLowerCase();
+  return normalized.includes("实习") || normalized.includes("intern") ? "internship" : "campus";
 }

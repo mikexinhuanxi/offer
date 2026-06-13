@@ -1,11 +1,11 @@
 .card-swap-container {
   position: absolute;
   z-index: 1;
-  right: 0;
-  bottom: 54px;
+  right: 104px;
+  bottom: 34px;
   overflow: visible;
   perspective: 1100px;
-  transform: translate(20%, 3%);
+  transform: translate(0, 0);
   transform-origin: bottom right;
 }
 

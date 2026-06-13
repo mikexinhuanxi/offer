@@ -21,25 +21,29 @@ interface MatchScorerOutput {
   }>;
 }
 
+const MAX_MATCHES_PER_CATEGORY = 5;
+
 export async function scoreMatches(
   profile: CandidateProfile,
   jobs: RetrievedJob[],
   jobSource = ""
 ): Promise<Omit<JobMatch, "rewriteExample">[]> {
   const usesTencentSkill = jobSource.includes("Tencent Campus Recruit");
-  const result = await chatJson<MatchScorerOutput>({
-    skillName: "匹配评分 Skill",
-    maxTokens: 3200,
-    temperature: 0.15,
-    messages: [
-      {
-        role: "system",
-        content:
-          "你是一个岗位匹配评分 Skill。只基于给定候选人画像和岗位库评分，不要编造岗位。只返回 JSON。分数必须可解释、克制，避免所有岗位都高分。screeningProbability 是本产品内部的简历覆盖参考，不代表企业官方通过率、录取率或录用承诺。"
-      },
-      {
-        role: "user",
-        content: `请对候选岗位评分，输出格式：
+  let result: MatchScorerOutput;
+  try {
+    result = await chatJson<MatchScorerOutput>({
+      skillName: "匹配评分 Skill",
+      maxTokens: 3200,
+      temperature: 0.15,
+      messages: [
+        {
+          role: "system",
+          content:
+            "你是一个岗位匹配评分 Skill。只基于给定候选人画像和岗位库评分，不要编造岗位。只返回 JSON。分数必须可解释、克制，避免所有岗位都高分。screeningProbability 是本产品内部的简历覆盖参考，不代表企业官方通过率、录取率或录用承诺。"
+        },
+        {
+          role: "user",
+          content: `请对候选岗位评分，输出格式：
 {
       "matches": [
     {
@@ -62,7 +66,7 @@ export async function scoreMatches(
   ]
 }
 
-最多输出 5 个 matches。必须返回完整、可解析的 JSON，不要添加 Markdown。
+最多输出 10 个 matches：实习岗位最多 5 个，校招岗位最多 5 个。若某类候选岗位不足 5 个，则输出该类全部候选。必须返回完整、可解析的 JSON，不要添加 Markdown。
 
 候选人画像：
 ${JSON.stringify(profile, null, 2)}
@@ -88,9 +92,12 @@ ${JSON.stringify(
   null,
   2
 )}`
-      }
-    ]
-  });
+        }
+      ]
+    });
+  } catch {
+    return buildFallbackMatchesForJobs(profile, jobs).sort((a, b) => b.score - a.score);
+  }
 
   const jobMap = new Map(jobs.map((job) => [job.id, job]));
   const matches: Omit<JobMatch, "rewriteExample">[] = [];
@@ -114,7 +121,11 @@ ${JSON.stringify(
     });
   }
 
-  return matches.sort((a, b) => b.score - a.score);
+  return ensureCategoryCoverage(profile, jobs, matches).sort((a, b) => b.score - a.score);
+}
+
+export function buildFallbackMatchesForJobs(profile: CandidateProfile, jobs: RetrievedJob[]) {
+  return ensureCategoryCoverage(profile, jobs, []);
 }
 
 function clamp(value: unknown) {
@@ -147,6 +158,194 @@ function normalizeList(value: unknown) {
     return [];
   }
   return value.map((item) => String(item).trim()).filter(Boolean).slice(0, 5);
+}
+
+function ensureCategoryCoverage(
+  profile: CandidateProfile,
+  jobs: RetrievedJob[],
+  matches: Omit<JobMatch, "rewriteExample">[]
+) {
+  const byId = new Set(matches.map((match) => match.job.id));
+  const completed = [...matches];
+
+  for (const category of ["internship", "campus"] as const) {
+    const currentCount = completed.filter((match) => getJobCategory(match.job.type) === category).length;
+    const needed = MAX_MATCHES_PER_CATEGORY - currentCount;
+    if (needed <= 0) {
+      continue;
+    }
+
+    const fallbackJobs = jobs
+      .filter((job) => getJobCategory(job.type) === category && !byId.has(job.id))
+      .slice(0, needed);
+
+    for (const job of fallbackJobs) {
+      byId.add(job.id);
+      completed.push(buildFallbackMatch(profile, job));
+    }
+  }
+
+  return completed;
+}
+
+function buildFallbackMatch(profile: CandidateProfile, job: RetrievedJob): Omit<JobMatch, "rewriteExample"> {
+  const signals = buildJobFitSignals(profile, job);
+  const score = signals.score;
+  const missingKeywords = signals.missingKeywords;
+  const resumeActions = [
+    `围绕「${job.title}」补充最贴近 JD 的项目职责、技术动作和结果。`,
+    missingKeywords.length > 0
+      ? `在简历中自然补齐关键词：${missingKeywords.slice(0, 3).join("、")}。`
+      : "把项目经历写成可判断的证据：背景、动作、结果和复盘。"
+  ];
+
+  const match = {
+    jobId: job.id,
+    score,
+    fitLevel: score >= 82 ? "稳妥" : score >= 70 ? "匹配" : score >= 56 ? "冲刺" : "不建议",
+    screeningProbability: signals.screeningProbability,
+    breakdown: {
+      skills: signals.skillsScore,
+      experience: signals.experienceScore,
+      keywords: signals.keywordsScore,
+      location: signals.locationScore,
+      growth: signals.growthScore
+    },
+    reasons: fallbackReasons(profile, job),
+    risks: missingKeywords.length > 0 ? [`简历中对 ${missingKeywords.slice(0, 2).join("、")} 的覆盖还不够明确。`] : [],
+    missingKeywords,
+    resumeActions
+  } satisfies MatchScorerOutput["matches"][number];
+
+  return {
+    job,
+    score: match.score,
+    fitLevel: match.fitLevel,
+    screeningProbability: match.screeningProbability,
+    breakdown: match.breakdown,
+    reasons: normalizeList(match.reasons),
+    risks: normalizeList(match.risks),
+    missingKeywords: normalizeList(match.missingKeywords),
+    resumeActions: normalizeList(match.resumeActions),
+    recommendation: buildRecommendation(profile, job, match)
+  };
+}
+
+function getJobCategory(type: string) {
+  const normalized = type.toLowerCase();
+  return normalized.includes("实习") || normalized.includes("intern") ? "internship" : "campus";
+}
+
+function fallbackReasons(profile: CandidateProfile, job: RetrievedJob) {
+  const skills = profile.skills.slice(0, 3);
+  const matchedTerms = job.matchedTerms.slice(0, 3);
+  return [
+    matchedTerms.length > 0
+      ? `岗位 JD 与简历关键词 ${matchedTerms.join("、")} 有直接交集。`
+      : `岗位方向与${profile.major || "候选人背景"}存在可迁移关系。`,
+    skills.length > 0
+      ? `可用 ${skills.join("、")} 相关经历支撑岗位要求。`
+      : "可以通过项目经历补充岗位要求的具体证据。"
+  ];
+}
+
+function fallbackMissingKeywords(profile: CandidateProfile, job: RetrievedJob) {
+  return buildJobFitSignals(profile, job).missingKeywords;
+}
+
+function buildJobFitSignals(profile: CandidateProfile, job: RetrievedJob) {
+  const profileTerms = [
+    ...profile.targetRoles,
+    ...profile.skills,
+    ...profile.tools,
+    ...profile.keywords,
+    profile.major,
+    ...profile.projects,
+    ...profile.internships
+  ].filter(Boolean);
+  const jobKeywords = extractJobKeywords(job);
+  const matchedKeywords = jobKeywords.filter((keyword) => termMatches(profileTerms, keyword));
+  const matchedTermCount = new Set([...matchedKeywords, ...job.matchedTerms]).size;
+  const missingKeywords = jobKeywords.filter((keyword) => !termMatches(profileTerms, keyword)).slice(0, 5);
+  const keywordRatio = jobKeywords.length > 0 ? matchedKeywords.length / jobKeywords.length : 0;
+  const retrievalBoost = Math.min(10, Math.max(0, job.retrievalScore ?? 0) * 2);
+  const locationScore =
+    profile.cities.length === 0 || profile.cities.some((city) => job.city.includes(city)) ? 86 : 62;
+  const skillsScore = clamp(42 + keywordRatio * 46 + Math.min(12, matchedTermCount * 4));
+  const keywordsScore = clamp(40 + keywordRatio * 52 + Math.min(8, matchedKeywords.length * 2));
+  const experienceScore = clamp(46 + Math.min(18, profile.projects.length * 6 + profile.internships.length * 8) + keywordRatio * 24);
+  const growthScore = clamp(64 + Math.min(16, matchedTermCount * 3) + Math.min(8, profile.strengths.length * 2));
+  const score = clamp(
+    skillsScore * 0.34 +
+      keywordsScore * 0.24 +
+      experienceScore * 0.18 +
+      locationScore * 0.12 +
+      growthScore * 0.08 +
+      retrievalBoost * 0.04
+  );
+  const screeningProbability = clamp(score - Math.min(18, missingKeywords.length * 4) + Math.min(8, matchedTermCount * 2));
+
+  return {
+    score,
+    screeningProbability,
+    skillsScore,
+    experienceScore,
+    keywordsScore,
+    locationScore,
+    growthScore,
+    missingKeywords
+  };
+}
+
+function extractJobKeywords(job: RetrievedJob) {
+  const words = `${job.title} ${job.requirements} ${job.bonus} ${job.description}`
+    .split(/[,\s/|，、；;。:：()（）【】\[\]<>《》]+/)
+    .map(cleanKeyword)
+    .filter((word) => word.length >= 2 && !isGenericKeyword(word));
+  return Array.from(new Set(words)).slice(0, 12);
+}
+
+function cleanKeyword(value: string) {
+  return value
+    .replace(/<[^>]+>/g, "")
+    .replace(/(实习生|工程师|岗位|方向|经验|能力|相关|优先)$/g, "")
+    .trim();
+}
+
+function isGenericKeyword(value: string) {
+  return [
+    "负责",
+    "参与",
+    "支持",
+    "腾讯",
+    "实习",
+    "校招",
+    "开发",
+    "产品",
+    "平台",
+    "系统",
+    "业务",
+    "团队",
+    "工作",
+    "要求",
+    "具备",
+    "熟悉",
+    "掌握",
+    "良好",
+    "优秀",
+    "以及",
+    "或者",
+    "包括",
+    "使用"
+  ].includes(value);
+}
+
+function termMatches(terms: string[], keyword: string) {
+  const normalizedKeyword = keyword.toLowerCase();
+  return terms.some((term) => {
+    const normalizedTerm = term.toLowerCase();
+    return normalizedTerm.includes(normalizedKeyword) || normalizedKeyword.includes(normalizedTerm);
+  });
 }
 
 function buildRecommendation(

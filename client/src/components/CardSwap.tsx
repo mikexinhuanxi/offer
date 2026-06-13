@@ -165,24 +165,42 @@ const CardSwap: React.FC<CardSwapProps> = ({
       });
     };
 
+    const startInterval = () => {
+      clearInterval(intervalRef.current);
+      intervalRef.current = window.setInterval(swap, delay);
+    };
+
+    let isPaused = false;
+
     swap();
-    intervalRef.current = window.setInterval(swap, delay);
+    startInterval();
 
     if (pauseOnHover) {
-      const node = container.current!;
+      const hoverTargets = [container.current, ...refs.map((ref) => ref.current)].filter(
+        (node): node is HTMLDivElement => Boolean(node)
+      );
       const pause = () => {
+        isPaused = true;
         tlRef.current?.pause();
         clearInterval(intervalRef.current);
       };
       const resume = () => {
+        if (!isPaused) {
+          return;
+        }
+        isPaused = false;
         tlRef.current?.play();
-        intervalRef.current = window.setInterval(swap, delay);
+        startInterval();
       };
-      node.addEventListener('mouseenter', pause);
-      node.addEventListener('mouseleave', resume);
+      hoverTargets.forEach((node) => {
+        node.addEventListener('mouseenter', pause);
+        node.addEventListener('mouseleave', resume);
+      });
       return () => {
-        node.removeEventListener('mouseenter', pause);
-        node.removeEventListener('mouseleave', resume);
+        hoverTargets.forEach((node) => {
+          node.removeEventListener('mouseenter', pause);
+          node.removeEventListener('mouseleave', resume);
+        });
         clearInterval(intervalRef.current);
       };
     }
