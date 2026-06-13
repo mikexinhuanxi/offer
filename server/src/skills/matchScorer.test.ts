@@ -70,3 +70,41 @@ assert.ok(javaMatch);
 assert.ok(reactMatch.score > javaMatch.score);
 assert.ok(reactMatch.screeningProbability > javaMatch.screeningProbability);
 assert.ok(reactMatch.missingKeywords.length < javaMatch.missingKeywords.length);
+
+process.env.OFFER_FAST_MATCH_SCORER = "true";
+process.env.DASHSCOPE_API_KEY = "test-key";
+
+let fetchCalled = false;
+globalThis.fetch = (async () => {
+  fetchCalled = true;
+  throw new Error("fast scorer should not call model fetch");
+}) as typeof fetch;
+
+const { scoreMatches } = await import("./matchScorer.js");
+const fastMatches = await scoreMatches(
+  {
+    ...profile,
+    targetRoles: ["后台开发"],
+    skills: ["Java", "MySQL", "Redis"],
+    tools: ["Docker"],
+    languages: ["Java", "TypeScript"],
+    keywords: ["后台开发", "数据库"]
+  },
+  [
+    {
+      ...job("fast-job", "实习"),
+      title: "软件开发-后台开发方向",
+      description: "负责后台服务开发。",
+      requirements: "Java MySQL Redis 数据结构",
+      bonus: "Docker 云原生",
+      retrievalScore: 10,
+      matchedTerms: ["Java", "MySQL", "后台开发"]
+    }
+  ],
+  "腾讯校招官网 join.qq.com via daily Tencent skill cache"
+);
+
+assert.equal(fetchCalled, false);
+assert.equal(fastMatches.length, 1);
+assert.equal(fastMatches[0]?.job.id, "fast-job");
+assert.ok(fastMatches[0]?.score > 0);

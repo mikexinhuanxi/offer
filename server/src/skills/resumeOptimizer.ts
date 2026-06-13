@@ -17,6 +17,15 @@ export async function optimizeResume(
   matches: Omit<JobMatch, "rewriteExample">[],
   jobSource = ""
 ): Promise<JobMatch[]> {
+  if (useFastResumeOptimizer()) {
+    return matches.map((match) => ({
+      ...match,
+      resumeActions: mergeLists(match.resumeActions, buildFastActions(profile, match)),
+      risks: mergeLists(match.risks, buildFastRisks(match)),
+      rewriteExample: buildFastRewriteExample(profile, match)
+    }));
+  }
+
   const topMatches = matches.slice(0, 6);
   const tencentGuidance = jobSource.includes("Tencent Campus Recruit")
     ? await loadTencentResumeGuidance()
@@ -92,4 +101,35 @@ ${
 
 function mergeLists(primary: string[], secondary?: string[]) {
   return Array.from(new Set([...primary, ...(secondary ?? [])].filter(Boolean))).slice(0, 5);
+}
+
+function useFastResumeOptimizer() {
+  return /^(1|true|yes)$/i.test(process.env.OFFER_FAST_RESUME_OPTIMIZER ?? "");
+}
+
+function buildFastActions(profile: CandidateProfile, match: Omit<JobMatch, "rewriteExample">) {
+  const project = profile.projects[0] || "核心项目";
+  const keywords = match.missingKeywords.slice(0, 3);
+  return [
+    `把「${project}」改写成背景、动作、结果三段式，突出个人贡献。`,
+    keywords.length > 0
+      ? `补充与 ${keywords.join("、")} 对应的真实项目证据。`
+      : "补充可验证的交付结果，例如效率、规模、覆盖范围或反馈。",
+    `围绕「${match.job.title}」前置最相关的技术栈、业务场景和结果。`
+  ];
+}
+
+function buildFastRisks(match: Omit<JobMatch, "rewriteExample">) {
+  const risks = [
+    ...match.risks,
+    "不要为了贴合 JD 编造未做过的项目、指标或技术细节。"
+  ];
+  return Array.from(new Set(risks)).slice(0, 3);
+}
+
+function buildFastRewriteExample(profile: CandidateProfile, match: Omit<JobMatch, "rewriteExample">) {
+  const project = profile.projects[0] || "核心项目";
+  const skills = [...profile.skills, ...profile.tools, ...profile.languages].filter(Boolean).slice(0, 4);
+  const skillText = skills.length > 0 ? `使用 ${skills.join("、")}` : "围绕岗位要求";
+  return `在「${project}」中，${skillText}完成与${match.job.title}相关的模块，补充个人负责动作、关键难点和可验证结果。`;
 }

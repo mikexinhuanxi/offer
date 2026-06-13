@@ -28,6 +28,10 @@ export async function scoreMatches(
   jobs: RetrievedJob[],
   jobSource = ""
 ): Promise<Omit<JobMatch, "rewriteExample">[]> {
+  if (useFastMatchScorer()) {
+    return buildFallbackMatchesForJobs(profile, jobs).sort((a, b) => b.score - a.score);
+  }
+
   const usesTencentSkill = jobSource.includes("Tencent Campus Recruit");
   let result: MatchScorerOutput;
   try {
@@ -126,6 +130,10 @@ ${JSON.stringify(
 
 export function buildFallbackMatchesForJobs(profile: CandidateProfile, jobs: RetrievedJob[]) {
   return ensureCategoryCoverage(profile, jobs, []);
+}
+
+function useFastMatchScorer() {
+  return /^(1|true|yes)$/i.test(process.env.OFFER_FAST_MATCH_SCORER ?? "");
 }
 
 function clamp(value: unknown) {
