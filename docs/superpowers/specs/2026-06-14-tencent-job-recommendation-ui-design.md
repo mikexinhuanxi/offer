@@ -1,103 +1,103 @@
-# Tencent Job Recommendation UI Design
+# 腾讯岗位推荐 UI 设计
 
-## Context
+## 背景
 
-Offer Catcher currently renders Tencent job recommendations in a split results workbench: a left shortlist and a right detail panel. The Tencent Campus Recruit skill recommends jobs in a specific output style: 3-5 real jobs from `join.qq.com`, no scores or probabilities, a brief match reason, official source context, JD interpretation, risk gaps, next actions, and an application link.
+Offer 捕手当前的结果页已经是工作台结构：左侧是推荐岗位短名单，右侧是当前岗位详情。腾讯校园招聘 skill 的岗位推荐有明确输出风格：只推荐 3-5 个来自 `join.qq.com` 的真实岗位，不展示评分或概率，重点展示简短匹配理由、官网来源、JD 解读、风险缺口、下一步动作和投递链接。
 
-The goal is to make the UI feel closer to that skill output while keeping the efficient workbench layout.
+本次目标是让推荐岗位区域更贴近腾讯 skill 的输出方式，同时保留现有工作台的高效浏览体验。
 
-## Decision
+## 设计决策
 
-Use Option B: keep the left shortlist plus right detail workbench, but replace the current left table with Tencent-style recommendation cards.
+采用 Option B：保留「左侧短名单 + 右侧详情」的工作台骨架，但把当前左侧表格替换成更像腾讯 skill 回答的推荐卡片。
 
-The left side should help users scan the recommended jobs quickly. The right side should help users understand and act on the selected recommendation.
+左侧负责让用户快速扫过推荐岗位，右侧负责解释为什么推荐、JD 怎么理解、简历下一步怎么改。
 
-## Left Shortlist
+## 左侧短名单
 
-Replace the table rows with compact recommendation cards. Each card shows:
+用紧凑推荐卡替换当前表格行。每张卡展示：
 
-- Job title.
-- City and recruit type.
-- Tencent official source cue, using the existing `recommendation.sourceLabel` when available.
-- One concise match reason from `recommendation.matchReason` or the first `reasons` item.
-- Missing keyword or risk cue, shown as a neutral count such as `3 个待补关键词`.
-- Selected state with a clear left accent and subtle background.
+- 岗位名称。
+- 工作城市和招聘类型。
+- 腾讯官网来源提示，优先使用现有的 `recommendation.sourceLabel`。
+- 一句简洁匹配理由，来自 `recommendation.matchReason` 或 `reasons` 第一条。
+- 缺口提示，用中性表达展示，例如 `3 个待补关键词`。
+- 清晰的选中态，例如左侧强调线和浅色背景。
 
-The card list keeps existing behavior:
+卡片列表保留现有行为：
 
-- Clicking or keyboard activating a card selects the job.
-- Filters for job category and city continue to work.
-- Empty state remains available when filters hide every job.
-- The displayed order follows the backend/Tencent skill result order.
+- 点击卡片或键盘激活卡片后选中岗位。
+- 岗位类别和城市筛选继续可用。
+- 筛选后无结果时保留空状态。
+- 展示顺序遵循后端和腾讯 skill 返回的岗位顺序。
 
-The UI must not display match score, screening probability, ranking algorithm language, or percentage-based confidence.
+推荐 UI 不展示匹配分数、初筛概率、算法排名话术或百分比置信度。
 
-## Right Detail Panel
+## 右侧详情
 
-Keep the selected job detail panel and organize it around the Tencent skill structure:
+保留当前选中岗位详情面板，并按腾讯 skill 的结构组织内容：
 
-- Job basic information: company, title, city, recruit type.
-- Application link, if available.
-- Recommendation reason and source label.
-- JD interpretation sections:
-  - Hard requirements.
-  - Soft qualities.
-  - Bonus points, when available.
-  - Resume focus.
-  - Interview prep.
-- Risk gaps from `match.risks`.
-- Next actions from `match.resumeActions`.
-- Rewrite suggestion from `match.rewriteExample`.
+- 岗位基础信息：公司、岗位名、城市、招聘类型。
+- 投递链接，如果后端返回了链接则展示。
+- 推荐理由和来源说明。
+- JD 解读模块：
+  - 硬性条件。
+  - 软性素质。
+  - 加分项，如果有则展示。
+  - 简历侧重。
+  - 面试准备。
+- 风险缺口，来自 `match.risks`。
+- 下一步动作，来自 `match.resumeActions`。
+- 简历改写建议，来自 `match.rewriteExample`。
 
-The panel should lead with the recommendation reason, then move into JD interpretation and actions. This mirrors the skill's "先结论后解释" style while still supporting deeper reading.
+右侧面板先给推荐理由，再进入 JD 拆解和修改动作。这样既符合腾讯 skill「先结论后解释」的风格，也方便用户继续深读。
 
-## Data Flow
+## 数据流
 
-No backend data contract change is required.
+不需要修改后端数据协议。
 
-The UI should use existing fields:
+前端继续使用现有字段：
 
-- `match.job.title`, `match.job.city`, `match.job.type`, `match.job.company`, `match.job.link`.
-- `match.recommendation.summary`, `match.recommendation.matchReason`, `match.recommendation.sourceLabel`.
-- `match.recommendation.jdInterpretation`.
-- `match.reasons`, `match.risks`, `match.missingKeywords`, `match.resumeActions`, `match.rewriteExample`.
+- `match.job.title`、`match.job.city`、`match.job.type`、`match.job.company`、`match.job.link`。
+- `match.recommendation.summary`、`match.recommendation.matchReason`、`match.recommendation.sourceLabel`。
+- `match.recommendation.jdInterpretation`。
+- `match.reasons`、`match.risks`、`match.missingKeywords`、`match.resumeActions`、`match.rewriteExample`。
 
-Fallbacks should preserve current behavior when `recommendation` is absent.
+当 `recommendation` 不存在时，继续保留当前兜底展示逻辑。
 
-## Visual Behavior
+## 视觉行为
 
-The recommendation area should remain dense and work-focused:
+推荐区域保持高信息密度和工作台气质：
 
-- Use 8px radius or less, matching the current design system.
-- Avoid nested cards.
-- Keep row/card heights stable so selecting a job does not shift the layout.
-- Use neutral colors with the existing green accent for source and selected state.
-- Keep long titles and reasons clamped on the left, with full detail visible on the right.
-- Preserve responsive behavior: on narrow screens the shortlist stacks above the detail panel.
+- 圆角不超过 8px，延续当前设计系统。
+- 避免卡片套卡片。
+- 卡片高度保持稳定，选中岗位时不造成布局跳动。
+- 使用中性色为主，沿用现有绿色作为官网来源和选中态强调色。
+- 左侧长岗位名和推荐理由做截断，完整信息放到右侧详情。
+- 保持响应式：窄屏下短名单堆叠在详情面板上方。
 
-## Accessibility
+## 可访问性
 
-Recommendation cards should remain keyboard accessible:
+推荐卡需要保持键盘可访问：
 
-- Use button elements or preserve row-like keyboard handlers with `Enter` and `Space`.
-- Maintain visible focus styling.
-- Expose selected state with `aria-current` or `aria-pressed`.
-- Keep the shortlist section labeled for screen readers.
+- 使用 `button` 元素，或保留现有 `Enter` / `Space` 键盘激活逻辑。
+- 保持清晰的焦点样式。
+- 使用 `aria-current` 或 `aria-pressed` 表达当前选中状态。
+- 短名单区域保留给屏幕阅读器使用的标签。
 
-## Testing
+## 验证
 
-Verification should include:
+实施后需要验证：
 
-- Unit or component-level assertions for recommendation card rendering if current test setup supports it.
-- Existing app tests.
-- TypeScript check.
-- Manual browser verification on desktop and mobile width.
-- Confirm no score/probability/ranking language appears in the recommendation UI.
+- 如果当前测试环境支持，补充推荐卡渲染相关的单元或组件测试。
+- 运行现有前端测试。
+- 运行 TypeScript 检查。
+- 用浏览器分别检查桌面宽度和移动端宽度。
+- 确认推荐 UI 中没有出现分数、概率、排名算法或百分比置信度话术。
 
-## Out of Scope
+## 不在本次范围
 
-- Backend matching changes.
-- Tencent skill script changes.
-- New scoring or ranking logic.
-- New saved job workflow.
-- Changing resume, interview, or mock interview tabs beyond preserving selected job context.
+- 修改后端匹配逻辑。
+- 修改腾讯 skill 脚本。
+- 新增评分或排名逻辑。
+- 新增岗位收藏流程。
+- 改动简历优化、面试准备、模拟面试等 Tab 的业务内容；这些区域只需要继续跟随当前选中岗位。
