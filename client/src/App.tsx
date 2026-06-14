@@ -105,6 +105,36 @@ interface ResumeReview {
   rewritePrinciples: string[];
 }
 
+interface ResumeAuditCheck {
+  id: string;
+  name: string;
+  status: "通过" | "不足" | "建议改进";
+  severity: "error" | "warning" | "suggestion";
+  passed: boolean;
+  detail: string;
+}
+
+interface ResumeAuditIssue {
+  title: string;
+  evidence?: string;
+  suggestion: string;
+}
+
+interface ResumeAudit {
+  score: number;
+  passedCount: number;
+  totalCount: number;
+  verdict: {
+    title: string;
+    detail: string;
+  };
+  checks: ResumeAuditCheck[];
+  highlights: string[];
+  prioritizedIssues: ResumeAuditIssue[];
+  nextActions: string[];
+  integrityNote: string;
+}
+
 interface JobTailoring {
   jobId: string;
   focus: string;
@@ -137,6 +167,7 @@ interface GroupAndHrPrep {
 }
 
 interface TencentCoaching {
+  resumeAudit?: ResumeAudit;
   resumeReview: ResumeReview;
   jobTailoring: JobTailoring[];
   interviewPrep: InterviewPrep[];
@@ -178,7 +209,7 @@ const resultTabs: Array<{ id: ResultsTab; label: string }> = [
   { id: "mock", label: "模拟 & HR" }
 ];
 
-const progressSteps = ["读取简历", "获取岗位源", "查找岗位", "计算匹配", "生成建议", "腾讯辅导"];
+const progressSteps = ["读取简历", "腾讯岗位匹配", "生成建议", "腾讯辅导"];
 
 const exampleResume = `张同学
 本科 软件工程
@@ -507,7 +538,7 @@ function ResultsDashboard({
     <section className="results-dashboard" aria-label="匹配结果">
       <div className="results-headline">
         <SectionTitle eyebrow="Tencent shortlist" title="推荐结果" />
-        <p>按岗位类别和城市筛选短名单，只展示符合当前条件的真实命中岗位。</p>
+        <p>按岗位类别和城市筛选短名单，只展示腾讯官网 skill 返回的真实岗位。</p>
       </div>
 
       <div className="opportunity-layout">
@@ -651,10 +682,7 @@ function SelectedOpportunity({ match }: { match: JobMatch }) {
         <small>{match.recommendation?.sourceLabel || "岗位信息来自后端岗位源。"}</small>
       </div>
 
-      <DecisionMetrics match={match} />
-
       <div className="opportunity-grid compact-decision-grid">
-        <ScoreBreakdownTable breakdown={match.breakdown} />
         <KeywordMappingTable
           keywords={interpretation?.hardRequirements ?? splitRequirementText(match.job.requirements)}
           missingKeywords={match.missingKeywords}
@@ -821,6 +849,7 @@ function ProfileSummary({ profile }: { profile: CandidateProfile }) {
 }
 
 function ScreeningReport({ analysis }: { analysis: AnalysisResponse }) {
+  const audit = analysis.tencentCoaching?.resumeAudit;
   const review = analysis.tencentCoaching?.resumeReview;
   const topMatches = analysis.matches.slice(0, 5);
   const highlights = normalizeReportItems(review?.highlights, [
@@ -841,18 +870,59 @@ function ScreeningReport({ analysis }: { analysis: AnalysisResponse }) {
     "只基于真实经历优化表达，不编造项目、奖项、公司或数据。"
   ]);
   const verdict = buildScreeningVerdict(issues.length, highlights.length, topMatches.length);
-  const topScore = topMatches.reduce((highest, match) => Math.max(highest, match.score), 0);
-  const averageScreening =
-    topMatches.length > 0
-      ? Math.round(topMatches.reduce((total, match) => total + match.screeningProbability, 0) / topMatches.length)
-      : 0;
   const missingKeywordCount = new Set(topMatches.flatMap((match) => match.missingKeywords)).size;
 
+  if (audit) {
+    return (
+      <section className="screening-report audit-report" aria-label="简历评估报告">
+        <div className="screening-report-head audit-report-head">
+          <span>Tencent resume check</span>
+          <h2>简历评估报告</h2>
+          <p>自动规则检查 + 人工审阅</p>
+        </div>
+        <div className="screening-grid audit-report-grid">
+          <div className="screening-verdict audit-score-card">
+            <span>综合评分</span>
+            <div className="audit-score">
+              <strong>{audit.score}</strong>
+              <span>/100</span>
+            </div>
+            <p>{`${audit.passedCount}/${audit.totalCount} 通过`}</p>
+          </div>
+          <div className="screening-verdict audit-verdict">
+            <span>评估结论</span>
+            <strong>{audit.verdict.title}</strong>
+            <p>{audit.verdict.detail}</p>
+          </div>
+          <div className="report-block audit-meter-block">
+            <strong>规则检查</strong>
+            <div className="audit-meter" aria-label="简历规则检查通过情况">
+              {audit.checks.map((check) => (
+                <span
+                  key={check.id}
+                  className={`audit-meter-segment ${check.passed ? "passed" : "not-passed"} ${check.severity}`}
+                  aria-label={`${check.name}：${check.status}`}
+                />
+              ))}
+            </div>
+          </div>
+          <AuditCheckTable checks={audit.checks} />
+          <div className="audit-review-stack">
+            <AuditList title="亮点" items={audit.highlights} />
+            <PriorityIssueList issues={audit.prioritizedIssues} />
+            <AuditList title="下一步修改" items={audit.nextActions} ordered />
+          </div>
+        </div>
+        <p className="audit-integrity-note">{audit.integrityNote}</p>
+      </section>
+    );
+  }
+
   return (
-    <section className="screening-report" aria-label="简历初筛评估报告">
+    <section className="screening-report" aria-label="简历评估报告">
       <div className="screening-report-head">
         <span>Tencent resume check</span>
-        <h2>简历初筛评估报告</h2>
+        <h2>简历评估报告</h2>
         <p>先看简历是否能被筛选者快速判断，再决定投哪些岗位和怎么改表达。</p>
       </div>
       <div className="screening-verdict">
@@ -861,8 +931,7 @@ function ScreeningReport({ analysis }: { analysis: AnalysisResponse }) {
         <p>{verdict.detail}</p>
       </div>
       <div className="screening-metrics" aria-label="初筛指标">
-        <MiniMetric label="最高匹配" value={topScore ? `${topScore}` : "暂无"} />
-        <MiniMetric label="平均初筛" value={averageScreening ? `${averageScreening}%` : "暂无"} />
+        <MiniMetric label="岗位来源" value="腾讯官网" />
         <MiniMetric label="关键词缺口" value={`${missingKeywordCount} 个`} />
         <MiniMetric label="推荐岗位" value={`${topMatches.length} 个`} />
       </div>
@@ -873,6 +942,76 @@ function ScreeningReport({ analysis }: { analysis: AnalysisResponse }) {
         <ReportBlock title="腾讯简历原则" items={principles} />
       </div>
     </section>
+  );
+}
+
+function AuditCheckTable({ checks }: { checks: ResumeAuditCheck[] }) {
+  return (
+    <div className="report-block audit-check-table-block">
+      <strong>检查明细</strong>
+      <table className="audit-check-table">
+        <thead>
+          <tr>
+            <th scope="col">检查项</th>
+            <th scope="col">结果</th>
+            <th scope="col">说明</th>
+          </tr>
+        </thead>
+        <tbody>
+          {checks.map((check) => (
+            <tr key={check.id}>
+              <th scope="row">{check.name}</th>
+              <td>
+                <span className={`audit-status ${check.passed ? "passed" : "not-passed"} ${check.severity}`}>
+                  {check.status}
+                </span>
+              </td>
+              <td>{check.detail}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function AuditList({ title, items, ordered = false }: { title: string; items: string[]; ordered?: boolean }) {
+  const ListTag = ordered ? "ol" : "ul";
+
+  return (
+    <div className="report-block audit-list">
+      <strong>{title}</strong>
+      {items.length > 0 ? (
+        <ListTag>
+          {items.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ListTag>
+      ) : (
+        <p>暂无</p>
+      )}
+    </div>
+  );
+}
+
+function PriorityIssueList({ issues }: { issues: ResumeAuditIssue[] }) {
+  return (
+    <div className="report-block audit-priority-issues">
+      <strong>需要优先改</strong>
+      {issues.length > 0 ? (
+        <ul>
+          {issues.map((issue) => (
+            <li key={`${issue.title}-${issue.suggestion}`}>
+              <strong>{issue.title}</strong>
+              {issue.evidence ? <p>证据：{issue.evidence}</p> : null}
+              <p>{issue.suggestion}</p>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p>暂无明显优先风险，建议继续按目标岗位调整表达。</p>
+      )}
+    </div>
   );
 }
 
@@ -1042,8 +1181,8 @@ function MatchList({
               <thead>
                 <tr>
                   <th scope="col">岗位</th>
-                  <th scope="col">匹配</th>
-                  <th scope="col">初筛</th>
+                  <th scope="col">地点</th>
+                  <th scope="col">理由</th>
                   <th scope="col">缺口</th>
                 </tr>
               </thead>
@@ -1061,16 +1200,14 @@ function MatchList({
                     <td>
                       <strong>{match.job.title}</strong>
                       <span>
-                        {match.job.city} · {match.job.type}
+                        {match.job.type}
                       </span>
                     </td>
                     <td>
-                      <ScoreBar value={match.score} />
+                      <span>{match.job.city}</span>
                     </td>
                     <td>
-                      <span className={match.screeningProbability >= 70 ? "table-pill" : "table-pill warn"}>
-                        {match.screeningProbability}%
-                      </span>
+                      <span>{match.reasons[0] ?? "腾讯官网岗位匹配"}</span>
                     </td>
                     <td>
                       <span className={match.missingKeywords.length > 2 ? "table-pill warn" : "table-pill"}>
@@ -1089,56 +1226,6 @@ function MatchList({
           </div>
         )}
       </div>
-    </section>
-  );
-}
-
-function DecisionMetrics({ match }: { match: JobMatch }) {
-  const metrics = [
-    { label: "匹配分", value: `${match.score}` },
-    { label: "初筛概率", value: `${match.screeningProbability}%` },
-    { label: "关键词缺口", value: `${match.missingKeywords.length}` },
-    { label: "改写动作", value: `${match.resumeActions.length}` },
-    { label: "优先级", value: match.fitLevel }
-  ];
-
-  return (
-    <section className="decision-metrics" aria-label="决策指标">
-      <span>决策指标</span>
-      <div>
-        {metrics.map((metric) => (
-          <MiniMetric key={metric.label} label={metric.label} value={metric.value} />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function ScoreBreakdownTable({ breakdown }: { breakdown: ScoreBreakdown }) {
-  const rows = [
-    { label: "技能", value: breakdown.skills },
-    { label: "经历", value: breakdown.experience },
-    { label: "关键词", value: breakdown.keywords },
-    { label: "地点", value: breakdown.location },
-    { label: "成长性", value: breakdown.growth }
-  ];
-
-  return (
-    <section className="decision-panel">
-      <strong>评分拆解</strong>
-      <table className="decision-table">
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.label}>
-              <th scope="row">{row.label}</th>
-              <td>
-                <ScoreBar value={row.value} />
-              </td>
-              <td>{row.value}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </section>
   );
 }
@@ -1192,15 +1279,6 @@ function CompactListPanel({ title, items, warn = false }: { title: string; items
         {items.length > 0 ? items.slice(0, 4).map((item) => <li key={item}>{item}</li>) : <li>暂无</li>}
       </ul>
     </section>
-  );
-}
-
-function ScoreBar({ value }: { value: number }) {
-  return (
-    <span className="score-bar" aria-label={`${value} 分`}>
-      <span style={{ width: `${clampScore(value)}%` }} />
-      <b>{value}</b>
-    </span>
   );
 }
 
@@ -1348,8 +1426,7 @@ function displayStepName(name: string, index: number) {
   const normalized = name
     .replace("简历解析 Skill", "读取简历")
     .replace("腾讯岗位源 Skill", "获取岗位源")
-    .replace("岗位库检索 Skill", "查找岗位")
-    .replace("匹配评分 Skill", "计算匹配")
+    .replace("腾讯岗位匹配 Skill", "腾讯岗位匹配")
     .replace("简历优化 Skill", "生成建议")
     .replace("腾讯辅导 Skill", "腾讯辅导");
   return normalized.includes("Skill") ? progressSteps[index] ?? normalized : normalized;
@@ -1382,10 +1459,6 @@ function splitRequirementText(requirements: string) {
     .map((item) => item.trim())
     .filter(Boolean)
     .slice(0, 6);
-}
-
-function clampScore(value: number) {
-  return Math.max(0, Math.min(100, value));
 }
 
 function buildScreeningVerdict(issueCount: number, highlightCount: number, matchCount: number) {

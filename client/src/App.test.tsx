@@ -198,6 +198,46 @@ const sampleAnalysis = {
     }
   ],
   tencentCoaching: {
+    resumeAudit: {
+      score: 71,
+      passedCount: 5,
+      totalCount: 7,
+      verdict: {
+        title: "有投递基础，但证据还可以更强",
+        detail: "简历已有可匹配素材，下一步重点是补量化结果、弱表达和岗位关键词证据。"
+      },
+      checks: [
+        { id: "R001", name: "教育背景", status: "通过", severity: "error", passed: true, detail: "有专业、学历或教育背景信息。" },
+        { id: "R002", name: "项目经历", status: "通过", severity: "error", passed: true, detail: "包含项目或实践经历描述。" },
+        { id: "R003", name: "技能列表", status: "通过", severity: "warning", passed: true, detail: "包含技能、工具或技术栈描述。" },
+        { id: "R004", name: "STAR 结构", status: "通过", severity: "warning", passed: true, detail: "项目描述具有 STAR 结构要素。" },
+        { id: "R005", name: "量化成果", status: "建议改进", severity: "suggestion", passed: false, detail: "建议添加量化成果。" },
+        {
+          id: "R006",
+          name: "表达优化",
+          status: "建议改进",
+          severity: "suggestion",
+          passed: false,
+          detail: "发现可优化表达：「协助」建议明确你的独立贡献。"
+        },
+        { id: "R007", name: "篇幅", status: "通过", severity: "warning", passed: true, detail: "长度适中。" }
+      ],
+      highlights: ["项目方向清晰", "AI Agent 项目时效性强"],
+      prioritizedIssues: [
+        {
+          title: "量化成果建议改进",
+          evidence: "建议添加量化成果。",
+          suggestion: "为每段重点经历补 1 个指标。"
+        },
+        {
+          title: "表达优化建议改进",
+          evidence: "发现可优化表达：「协助」建议明确你的独立贡献。",
+          suggestion: "把弱表达替换为独立产出、负责范围和被采纳结果。"
+        }
+      ],
+      nextActions: ["补充指标", "把弱表达替换为独立产出。"],
+      integrityNote: "建议只基于真实经历补充证据和表达，不编造学校、公司、奖项、项目或数据。"
+    },
     resumeReview: {
       highlights: ["项目方向清晰"],
       issues: ["量化不足"],
@@ -298,17 +338,19 @@ test("shows task tabs in results and switches to resume optimization", async () 
   expect(await screen.findByRole("heading", { name: "推荐结果" })).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "岗位短名单" })).toBeInTheDocument();
   expect(screen.getByRole("columnheader", { name: "岗位" })).toBeInTheDocument();
-  expect(screen.getByRole("columnheader", { name: "匹配" })).toBeInTheDocument();
-  expect(screen.getByRole("columnheader", { name: "初筛" })).toBeInTheDocument();
+  expect(screen.getByRole("columnheader", { name: "地点" })).toBeInTheDocument();
+  expect(screen.getByRole("columnheader", { name: "理由" })).toBeInTheDocument();
   expect(screen.getByRole("columnheader", { name: "缺口" })).toBeInTheDocument();
-  expect(screen.getByText("决策指标")).toBeInTheDocument();
-  expect(screen.getByText("评分拆解")).toBeInTheDocument();
   expect(screen.getByText("JD / 简历映射")).toBeInTheDocument();
   expect(screen.queryByRole("heading", { name: "放入你的简历" })).not.toBeInTheDocument();
   expect(screen.queryByLabelText("捕获过程预览")).not.toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "简历初筛评估报告" })).toBeInTheDocument();
-  expect(screen.getByText("量化不足")).toBeInTheDocument();
-  expect(screen.getByText("真实具体")).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "简历评估报告" })).toBeInTheDocument();
+  expect(screen.getByText("自动规则检查 + 人工审阅")).toBeInTheDocument();
+  expect(screen.getByText("71")).toBeInTheDocument();
+  expect(screen.getByText("5/7 通过")).toBeInTheDocument();
+  expect(screen.getByText("表达优化")).toBeInTheDocument();
+  expect(screen.getByText("发现可优化表达：「协助」建议明确你的独立贡献。")).toBeInTheDocument();
+  expect(screen.getByText("建议只基于真实经历补充证据和表达，不编造学校、公司、奖项、项目或数据。")).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "推荐岗位" })).toBeInTheDocument();
   const shortlist = screen.getByLabelText("推荐岗位短名单");
   expect(shortlist).toBeInTheDocument();
@@ -399,7 +441,7 @@ test("shows screening report after uploaded resume analysis without coaching pay
   expect(await screen.findByText("resume.txt")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "开始捕获" }));
 
-  expect(await screen.findByRole("heading", { name: "简历初筛评估报告" })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "简历评估报告" })).toBeInTheDocument();
   expect(screen.getByText("已有项目、实习或课程经历可作为初筛判断素材。")).toBeInTheDocument();
   expect(screen.getByText("腾讯简历原则")).toBeInTheDocument();
 });
