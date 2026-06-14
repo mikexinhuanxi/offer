@@ -1,87 +1,87 @@
-# Tencent Resume Audit Report Design
+# 腾讯简历评估报告设计
 
-## Goal
+## 目标
 
-Redesign the resume evaluation report around the Tencent campus recruit skill workflow. The UI should make the report feel like a credible review rather than a generic advice list.
+围绕腾讯校招 skill 的真实工作流，重新设计简历评估报告。新的 UI 应该让用户感觉这是一个有依据的审阅报告，而不是泛泛的建议列表。
 
-The selected direction is the hybrid audit report:
+本次选择的方向是“混合式审阅报告”：
 
-1. Show rule-based scoring first.
-2. Show Tencent skill checks as a compact evidence layer.
-3. Follow with human-readable highlights, prioritized issues, and next actions.
+1. 先展示规则检查得分。
+2. 再展示腾讯 skill 的检查项，作为紧凑的证据层。
+3. 最后展示可读性更强的亮点、优先级问题和下一步修改动作。
 
-## Source Behavior
+## 来源逻辑
 
-The Tencent skill evaluates resumes through two layers:
+腾讯 skill 的简历诊断主要由两层组成：
 
-- `scripts/resume_checker.py` runs seven rule checks:
-  - Education background
-  - Project experience
-  - Skill list
-  - STAR structure
-  - Quantified results
-  - Weak expression
-  - Resume length
-- `references/resume-guide.md` turns those rule hits into practical advice:
-  - Use STAR structure.
-  - Add measurable results.
-  - Replace weak phrases such as "参与了" and "协助" with concrete ownership.
-  - Keep school and education comments neutral and fact-based.
-  - Only optimize true experience; do not invent or exaggerate facts.
-  - Adjust emphasis by target direction, such as technical, product, game, design, or functional roles.
+- `scripts/resume_checker.py` 执行 7 项规则检查：
+  - 教育背景
+  - 项目经历
+  - 技能列表
+  - STAR 结构
+  - 量化成果
+  - 表达优化
+  - 篇幅
+- `references/resume-guide.md` 将规则命中结果转化为可执行建议：
+  - 使用 STAR 结构描述经历。
+  - 补充可量化成果。
+  - 将“参与了”“协助”等弱表达改成更具体的个人贡献。
+  - 涉及学校、学历时保持中性和事实化表达。
+  - 只基于真实经历优化，不编造、不夸大。
+  - 根据目标方向调整侧重点，例如技术、产品、游戏、设计、市场/职能等方向。
 
-## Product Shape
+## 产品形态
 
-The report should appear near the top of the results page, replacing the current generic `ScreeningReport` layout.
+报告应出现在结果页靠前位置，用来替换当前较通用的 `ScreeningReport` 布局。
 
-### Header
+### 顶部信息
 
-Show:
+展示内容：
 
-- Title: `简历评估报告`
-- Subtitle: `自动规则检查 + 人工审阅`
-- Score block: `71/100` style score, plus `5/7 通过`
-- One-sentence verdict based on score and unresolved risks
+- 标题：`简历评估报告`
+- 副标题：`自动规则检查 + 人工审阅`
+- 分数块：类似 `71/100`，并展示 `5/7 通过`
+- 基于分数和未解决风险生成一句总体判断
 
-The header should feel operational and scan-friendly, not like a marketing hero.
+顶部应更像一个工作台里的评估模块，方便快速扫描，不做营销式大标题。
 
-### Rule Evidence
+### 规则证据层
 
-Display the seven Tencent checks as a compact table or status grid.
+将腾讯的 7 项检查展示为紧凑表格或状态网格。
 
-Each row should include:
+每一行包含：
 
-- Check name
-- Status: `通过`, `不足`, or `建议改进`
-- Short detail from the rule result
+- 检查项名称
+- 状态：`通过`、`不足` 或 `建议改进`
+- 来自规则结果的简短说明
 
-Status color should be restrained:
+状态颜色保持克制：
 
-- Pass: green
-- Warning or suggestion: amber
-- Error: red only for missing critical basics
+- 通过：绿色
+- 警告或建议：琥珀色
+- 错误：仅在缺少关键基础信息时使用红色
 
-### Human Review
+### 人工审阅层
 
-Below the rule evidence, show three readable sections:
+规则证据下方展示三个可读性更强的区域：
 
-- `亮点`: 2-4 strengths that should be kept and moved forward.
-- `需要优先改`: 3-5 prioritized issues, ordered by impact on screening.
-- `下一步修改`: 3-5 concrete actions, preferably phrased as edits the user can make immediately.
+- `亮点`：2-4 条值得保留并前置呈现的优势。
+- `需要优先改`：3-5 条按初筛影响排序的问题。
+- `下一步修改`：3-5 条用户可以立刻执行的修改动作。
 
-Issues can include evidence snippets when available, such as weak phrases found in the resume.
+如果能从简历中命中具体证据，例如“协助”“参与了”等弱表达，可以在问题中附上原文片段。
 
-### Tencent Boundary Note
+### 腾讯边界提示
 
-Include a small boundary note, not a large warning:
+放一个小型边界提示，不做成很重的警告：
 
 `建议只基于真实经历补充证据和表达，不编造学校、公司、奖项、项目或数据。`
 
-This keeps the Tencent skill's integrity rule visible without making the report feel punitive.
+这样既能保留腾讯 skill 的简历正直原则，又不会让报告显得在“训人”。
 
-## Data Model
+## 数据模型
 
-Add an optional structured audit object to the existing coaching response.
+在现有辅导响应中新增一个可选的结构化审阅对象。
 
 ```ts
 interface ResumeAudit {
@@ -111,76 +111,76 @@ interface ResumeAudit {
 }
 ```
 
-`TencentCoaching.resumeReview` should remain for compatibility. The new UI can use `resumeAudit` when present and fall back to the current `resumeReview` fields when absent.
+`TencentCoaching.resumeReview` 继续保留，用于兼容已有前端和旧响应。新 UI 优先使用 `resumeAudit`，如果不存在，则回退到当前 `resumeReview` 字段。
 
-## Backend Design
+## 后端设计
 
-Create a small deterministic audit builder in `server/src/skills/tencentCoach.ts` or a nearby focused module.
+在 `server/src/skills/tencentCoach.ts` 或相邻的独立模块中，新增一个确定性的简历审阅构建器。
 
-Inputs:
+输入：
 
-- Raw resume text
-- Parsed `CandidateProfile`
-- Top job matches
-- Existing `ResumeReview`
+- 简历原文
+- 解析后的 `CandidateProfile`
+- 排名前几的岗位匹配结果
+- 已有的 `ResumeReview`
 
-Responsibilities:
+职责：
 
-- Reproduce the seven Tencent rule checks in TypeScript, matching `resume_checker.py` semantics closely enough for this product.
-- Compute score from passed checks.
-- Convert check messages into UI-friendly details.
-- Derive highlights from parsed strengths, projects, skills, tools, and match evidence.
-- Derive prioritized issues from failed checks, profile risks, top match risks, and missing keywords.
-- Keep all suggestions grounded in resume text or known match data.
+- 用 TypeScript 复现腾讯 `resume_checker.py` 的 7 项规则检查，语义尽量保持一致。
+- 根据通过项计算分数。
+- 将检查结果转成适合 UI 展示的简短说明。
+- 从候选人优势、项目、技能、工具和岗位匹配证据中提炼亮点。
+- 从未通过检查、画像风险、岗位风险和缺失关键词中生成优先级问题。
+- 所有建议都必须基于简历原文或已知岗位匹配数据，不编造事实。
 
-No external model call is required for this first implementation.
+第一版不需要额外调用模型。
 
-## Frontend Design
+## 前端设计
 
-Update `client/src/App.tsx`:
+更新 `client/src/App.tsx`：
 
-- Extend the TypeScript interfaces with `ResumeAudit`.
-- Replace the current four-card `ScreeningReport` with the hybrid audit layout.
-- Keep `MiniMetric` or similar small primitives where useful.
-- Add focused components if the JSX becomes hard to read:
+- 扩展前端 TypeScript 类型，加入 `ResumeAudit`。
+- 将当前四卡片式的 `ScreeningReport` 替换为混合式审阅报告。
+- 可继续复用 `MiniMetric` 等小组件。
+- 如果 JSX 变长，可以拆出聚焦的小组件：
   - `AuditScoreCard`
   - `AuditCheckTable`
   - `AuditReviewColumn`
   - `PriorityIssueList`
 
-Update `client/src/styles.css`:
+更新 `client/src/styles.css`：
 
-- Use dense, workbench-like layout.
-- Avoid nested cards.
-- Keep the score block visually strong but compact.
-- Ensure the rule table and issue list fit on mobile without horizontal overflow.
+- 使用更紧凑、更像工作台的布局。
+- 避免卡片套卡片。
+- 分数模块要醒目，但不能过大。
+- 规则表格和问题列表在移动端不能横向溢出。
 
-## Fallback Behavior
+## 兜底行为
 
-If `resumeAudit` is missing:
+如果 `resumeAudit` 缺失：
 
-- Build a lightweight fallback from existing `resumeReview`, top match risks, and missing keywords.
-- Do not show fake rule pass/fail details.
-- Show the current verdict logic as a compatibility path.
+- 从已有 `resumeReview`、头部岗位风险和缺失关键词中构造轻量兜底展示。
+- 不伪造规则检查的通过/未通过结果。
+- 使用当前已有的总体判断逻辑作为兼容路径。
 
-If resume text is very short:
+如果简历文本过短：
 
-- Score should drop through length and missing content checks.
-- The primary next action should be to complete basic resume sections before job tailoring.
+- 篇幅和基础内容缺失会拉低分数。
+- 首要修改动作应提示先补全基础简历模块，再做岗位定制。
 
-## Testing
+## 测试
 
-Add or update tests for:
+新增或更新以下测试：
 
-- Backend audit builder returns seven checks and a stable score.
-- Weak expressions such as `协助` or `参与了` produce `建议改进`.
-- Missing quantification produces an issue.
-- Frontend renders the report title, score, check names, priority issues, and integrity note.
-- Existing responses without `resumeAudit` still render.
+- 后端审阅构建器返回 7 项检查和稳定分数。
+- `协助`、`参与了` 等弱表达会触发 `建议改进`。
+- 缺少量化数据会生成问题。
+- 前端能渲染报告标题、分数、检查项、优先级问题和正直提示。
+- 没有 `resumeAudit` 的旧响应仍然可以正常渲染。
 
-## Non-Goals
+## 非目标
 
-- Do not redesign the whole results page.
-- Do not add another model call just for the report.
-- Do not expose internal scoring weights or imply Tencent official screening probability.
-- Do not make school or education value judgments.
+- 不重做整个结果页。
+- 不为了报告额外增加一次模型调用。
+- 不暴露内部评分权重，也不暗示腾讯官方初筛概率。
+- 不对学校或学历做价值判断。
