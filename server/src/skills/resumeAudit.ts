@@ -14,7 +14,7 @@ const QUANTIFIED_RESULT_PATTERN =
 
 interface CheckDefinition {
   id: string;
-  title: string;
+  name: string;
   severity: ResumeAuditCheck["severity"];
   passed: boolean;
   detail: string;
@@ -48,7 +48,7 @@ export function buildResumeAudit(
   const weakExpressions = WEAK_EXPRESSIONS.filter((expression) => fullText.includes(expression));
   const length = Array.from(normalizedResume).length;
 
-  const checks = [
+  const checkDefinitions = [
     buildEducationCheck(fullText, profile),
     buildProjectCheck(fullText, profile),
     buildSkillCheck(fullText, profile, missingKeywords),
@@ -56,7 +56,8 @@ export function buildResumeAudit(
     buildQuantifiedResultCheck(fullText, review),
     buildExpressionCheck(weakExpressions, review),
     buildLengthCheck(length)
-  ].map(toAuditCheck);
+  ];
+  const checks = checkDefinitions.map(toAuditCheck);
 
   const passedCount = checks.filter((check) => check.status === "通过").length;
   const score = Math.round(
@@ -78,8 +79,8 @@ export function buildResumeAudit(
     verdict: buildVerdict(score),
     checks,
     highlights: buildHighlights(profile, matches, review),
-    prioritizedIssues: buildIssues(checks, review),
-    nextActions: buildNextActions(checks, review, matches),
+    prioritizedIssues: buildIssues(checkDefinitions, review),
+    nextActions: buildNextActions(checkDefinitions, review, matches),
     integrityNote: INTEGRITY_NOTE
   };
 }
@@ -93,8 +94,8 @@ function buildEducationCheck(fullText: string, profile: CandidateProfile): Check
 
   return {
     id: "R001",
-    title: "教育背景",
-    severity: "required",
+    name: "教育背景",
+    severity: "error",
     passed,
     detail: passed
       ? `已呈现${educationSignals.slice(0, 2).join("、")}等教育信息。`
@@ -110,8 +111,8 @@ function buildProjectCheck(fullText: string, profile: CandidateProfile): CheckDe
 
   return {
     id: "R002",
-    title: "项目经历",
-    severity: "required",
+    name: "项目经历",
+    severity: "error",
     passed,
     detail: passed
       ? `已覆盖${(matchedProjects.length > 0 ? matchedProjects : projectSignals).slice(0, 2).join("、")}等项目经历。`
@@ -131,8 +132,8 @@ function buildSkillCheck(
 
   return {
     id: "R003",
-    title: "技能列表",
-    severity: "required",
+    name: "技能列表",
+    severity: "warning",
     passed,
     detail: passed
       ? `技能列表已呈现${matchedSkills.slice(0, 4).join("、")}。`
@@ -149,8 +150,8 @@ function buildStarCheck(fullText: string): CheckDefinition {
 
   return {
     id: "R004",
-    title: "STAR 结构",
-    severity: "required",
+    name: "STAR 结构",
+    severity: "warning",
     passed,
     detail: passed
       ? "已能看到场景、行动和结果线索，可进一步压缩成 STAR 表达。"
@@ -166,8 +167,8 @@ function buildQuantifiedResultCheck(fullText: string, review: ResumeReview): Che
 
   return {
     id: "R005",
-    title: "量化成果",
-    severity: "required",
+    name: "量化成果",
+    severity: "suggestion",
     passed,
     detail: quantifiedSignals.length > 0
       ? `已出现 ${quantifiedSignals[0]} 等量化线索${reviewMentionsQuant ? "，但覆盖仍不均" : ""}。`
@@ -182,7 +183,7 @@ function buildExpressionCheck(weakExpressions: string[], review: ResumeReview): 
 
   return {
     id: "R006",
-    title: "表达优化",
+    name: "表达优化",
     severity: "suggestion",
     passed,
     detail: passed
@@ -197,8 +198,8 @@ function buildLengthCheck(length: number): CheckDefinition {
 
   return {
     id: "R007",
-    title: "篇幅",
-    severity: "required",
+    name: "篇幅",
+    severity: "warning",
     passed,
     detail: passed ? `当前简历文本约 ${length} 字，篇幅适中。` : `当前简历文本约 ${length} 字，不在 200-3000 字建议范围内。`,
     suggestion: length < 200 ? "补充关键项目、实习、技能和结果证据。" : "压缩重复描述，保留与目标岗位最相关的证据。"
@@ -208,11 +209,11 @@ function buildLengthCheck(length: number): CheckDefinition {
 function toAuditCheck(check: CheckDefinition): ResumeAuditCheck {
   return {
     id: check.id,
-    title: check.title,
+    name: check.name,
     status: check.passed ? "通过" : check.severity === "suggestion" ? "建议改进" : "不足",
     severity: check.severity,
-    detail: check.detail,
-    suggestion: check.suggestion
+    passed: check.passed,
+    detail: check.detail
   };
 }
 
@@ -224,30 +225,26 @@ function buildHighlights(profile: CandidateProfile, matches: JobMatch[], review:
   ]).slice(0, 6);
 }
 
-function buildIssues(checks: ResumeAuditCheck[], review: ResumeReview): ResumeAuditIssue[] {
+function buildIssues(checks: CheckDefinition[], review: ResumeReview): ResumeAuditIssue[] {
   const failedCheckIssues = checks
-    .filter((check) => check.status !== "通过")
+    .filter((check) => !check.passed)
     .map((check) => ({
-      checkId: check.id,
-      title: `${check.title}${check.status === "建议改进" ? "建议改进" : "不足"}`,
-      detail: check.detail,
-      action: check.suggestion,
-      severity: check.severity
+      title: `${check.name}${check.severity === "suggestion" ? "建议改进" : "不足"}`,
+      evidence: check.detail,
+      suggestion: check.suggestion
     }));
 
-  const reviewIssues = review.issues.map((issue, index) => ({
-    checkId: `REV-${index + 1}`,
+  const reviewIssues = review.issues.map((issue) => ({
     title: issue,
-    detail: `已有简历审阅指出：${issue}。`,
-    action: issue.includes("量化") ? "补充量化成果和可验证证据。" : "基于真实经历补充更具体的个人动作和结果。",
-    severity: "suggestion" as const
+    evidence: `已有简历审阅指出：${issue}。`,
+    suggestion: issue.includes("量化") ? "补充量化成果和可验证证据。" : "基于真实经历补充更具体的个人动作和结果。"
   }));
 
   return uniqueIssues([...failedCheckIssues, ...reviewIssues]).slice(0, 6);
 }
 
-function buildNextActions(checks: ResumeAuditCheck[], review: ResumeReview, matches: JobMatch[]) {
-  const checkActions = checks.filter((check) => check.status !== "通过").map((check) => check.suggestion);
+function buildNextActions(checks: CheckDefinition[], review: ResumeReview, matches: JobMatch[]) {
+  const checkActions = checks.filter((check) => !check.passed).map((check) => check.suggestion);
   const issueActions = review.issues.map((issue) =>
     issue.includes("量化") ? `针对「${issue}」补充量化证据。` : `针对「${issue}」补充真实动作和结果。`
   );
@@ -258,12 +255,21 @@ function buildNextActions(checks: ResumeAuditCheck[], review: ResumeReview, matc
 
 function buildVerdict(score: number) {
   if (score >= 85) {
-    return "简历基础扎实，可做岗位定制优化";
+    return {
+      title: "简历基础扎实",
+      detail: "可做岗位定制优化，继续补充与目标岗位直接相关的证据。"
+    };
   }
   if (score >= 65) {
-    return "简历具备匹配基础，建议补强证据和表达";
+    return {
+      title: "简历具备匹配基础",
+      detail: "建议补强证据和表达，让筛选者更快判断个人贡献。"
+    };
   }
-  return "简历信息仍需补全，建议先补核心经历";
+  return {
+    title: "简历信息仍需补全",
+    detail: "建议先补核心经历、技能证据和可验证结果。"
+  };
 }
 
 function normalizeText(text: string) {
@@ -277,7 +283,7 @@ function unique(values: string[]) {
 function uniqueIssues(issues: ResumeAuditIssue[]) {
   const seen = new Set<string>();
   return issues.filter((issue) => {
-    const key = `${issue.title}:${issue.action}`;
+    const key = `${issue.title}:${issue.suggestion}`;
     if (seen.has(key)) {
       return false;
     }

@@ -75,26 +75,24 @@ export interface ResumeReview {
 
 export interface ResumeAuditCheck {
   id: string;
-  title: string;
+  name: string;
   status: "通过" | "不足" | "建议改进";
-  severity: "required" | "suggestion";
+  severity: "error" | "warning" | "suggestion";
+  passed: boolean;
   detail: string;
-  suggestion: string;
 }
 
 export interface ResumeAuditIssue {
-  checkId: string;
   title: string;
-  detail: string;
-  action: string;
-  severity: "required" | "suggestion";
+  evidence?: string;
+  suggestion: string;
 }
 
 export interface ResumeAudit {
   score: number;
   passedCount: number;
   totalCount: number;
-  verdict: string;
+  verdict: { title: string; detail: string };
   checks: ResumeAuditCheck[];
   highlights: string[];
   prioritizedIssues: ResumeAuditIssue[];
