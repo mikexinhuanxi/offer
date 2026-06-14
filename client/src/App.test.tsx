@@ -484,6 +484,41 @@ test("shows screening report after uploaded resume analysis without coaching pay
   expect(screen.getByText("腾讯简历原则")).toBeInTheDocument();
 });
 
+test("keeps legacy resume review fallback when audit payload is missing", async () => {
+  const legacyCoachingAnalysis = {
+    ...sampleAnalysis,
+    tencentCoaching: {
+      ...sampleAnalysis.tencentCoaching,
+      resumeAudit: undefined
+    }
+  };
+
+  vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
+    const url = String(input);
+    if (url.endsWith("/api/health")) {
+      return new Response(JSON.stringify({ ok: true, hasApiKey: true, model: "qwen-plus", baseUrl: "test" }));
+    }
+    if (url.endsWith("/api/jobs")) {
+      return new Response(JSON.stringify({ count: 1, source: "tencent" }));
+    }
+    if (url.endsWith("/api/analyze")) {
+      return new Response(JSON.stringify(legacyCoachingAnalysis));
+    }
+    return new Response("{}", { status: 404 });
+  });
+
+  render(<App />);
+
+  fireEvent.click(screen.getByRole("button", { name: "开始捕捉 Offer" }));
+  fireEvent.click(await screen.findByRole("button", { name: "载入样例" }));
+  fireEvent.click(screen.getByRole("button", { name: "开始捕获" }));
+
+  expect(await screen.findByRole("heading", { name: "简历评估报告" })).toBeInTheDocument();
+  expect(screen.getByLabelText("简历评估报告")).toBeInTheDocument();
+  expect(screen.getAllByText("量化不足").length).toBeGreaterThan(0);
+  expect(screen.getByText("真实具体")).toBeInTheDocument();
+});
+
 test("keeps card swap running when hovering a visible card by default", () => {
   vi.useFakeTimers();
   const clearIntervalSpy = vi.spyOn(window, "clearInterval");
