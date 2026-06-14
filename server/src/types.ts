@@ -73,6 +73,35 @@ export interface ResumeReview {
   rewritePrinciples: string[];
 }
 
+export interface ResumeAuditCheck {
+  id: string;
+  title: string;
+  status: "通过" | "不足" | "建议改进";
+  severity: "required" | "suggestion";
+  detail: string;
+  suggestion: string;
+}
+
+export interface ResumeAuditIssue {
+  checkId: string;
+  title: string;
+  detail: string;
+  action: string;
+  severity: "required" | "suggestion";
+}
+
+export interface ResumeAudit {
+  score: number;
+  passedCount: number;
+  totalCount: number;
+  verdict: string;
+  checks: ResumeAuditCheck[];
+  highlights: string[];
+  prioritizedIssues: ResumeAuditIssue[];
+  nextActions: string[];
+  integrityNote: string;
+}
+
 export interface JobTailoring {
   jobId: string;
   focus: string;
@@ -106,6 +135,7 @@ export interface GroupAndHrPrep {
 
 export interface TencentCoaching {
   resumeReview: ResumeReview;
+  resumeAudit?: ResumeAudit;
   jobTailoring: JobTailoring[];
   interviewPrep: InterviewPrep[];
   mockInterview: MockInterviewQuestion[];
