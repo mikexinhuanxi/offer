@@ -387,6 +387,44 @@ test("shows task tabs in results and switches to resume optimization", async () 
   expect(screen.getAllByText("项目方向清晰").length).toBeGreaterThan(0);
 });
 
+test("shows an empty state when audit checks are missing", async () => {
+  const emptyChecksAnalysis = {
+    ...sampleAnalysis,
+    tencentCoaching: {
+      ...sampleAnalysis.tencentCoaching,
+      resumeAudit: {
+        ...sampleAnalysis.tencentCoaching.resumeAudit,
+        checks: []
+      }
+    }
+  };
+
+  vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
+    const url = String(input);
+    if (url.endsWith("/api/health")) {
+      return new Response(JSON.stringify({ ok: true, hasApiKey: true, model: "qwen-plus", baseUrl: "test" }));
+    }
+    if (url.endsWith("/api/jobs")) {
+      return new Response(JSON.stringify({ count: 1, source: "tencent" }));
+    }
+    if (url.endsWith("/api/analyze")) {
+      return new Response(JSON.stringify(emptyChecksAnalysis));
+    }
+    return new Response("{}", { status: 404 });
+  });
+
+  render(<App />);
+
+  fireEvent.click(screen.getByRole("button", { name: "开始捕捉 Offer" }));
+  fireEvent.click(await screen.findByRole("button", { name: "载入样例" }));
+  fireEvent.click(screen.getByRole("button", { name: "开始捕获" }));
+
+  expect(await screen.findByRole("heading", { name: "简历评估报告" })).toBeInTheDocument();
+  const checkTableBlock = screen.getByText("检查明细").closest(".audit-check-table-block");
+  expect(checkTableBlock).not.toBeNull();
+  expect(within(checkTableBlock as HTMLElement).getByText("暂无")).toBeInTheDocument();
+});
+
 test("does not pad filtered shortlist when only one job matches", async () => {
   render(<App />);
 

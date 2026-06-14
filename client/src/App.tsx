@@ -958,17 +958,23 @@ function AuditCheckTable({ checks }: { checks: ResumeAuditCheck[] }) {
           </tr>
         </thead>
         <tbody>
-          {checks.map((check) => (
-            <tr key={check.id}>
-              <th scope="row">{check.name}</th>
-              <td>
-                <span className={`audit-status ${check.passed ? "passed" : "not-passed"} ${check.severity}`}>
-                  {check.status}
-                </span>
-              </td>
-              <td>{check.detail}</td>
+          {checks.length > 0 ? (
+            checks.map((check) => (
+              <tr key={check.id}>
+                <th scope="row">{check.name}</th>
+                <td>
+                  <span className={`audit-status ${check.passed ? "passed" : "not-passed"} ${check.severity}`}>
+                    {check.status}
+                  </span>
+                </td>
+                <td>{check.detail}</td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td colSpan={3}>暂无</td>
             </tr>
-          ))}
+          )}
         </tbody>
       </table>
     </div>
