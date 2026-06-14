@@ -14,7 +14,6 @@ import {
 } from "lucide-react";
 import {
   type ChangeEvent,
-  type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
   useEffect,
@@ -682,11 +681,15 @@ function SelectedOpportunity({ match }: { match: JobMatch }) {
         <small>{match.recommendation?.sourceLabel || "岗位信息来自后端岗位源。"}</small>
       </div>
 
-      <div className="opportunity-grid compact-decision-grid">
+      <div className="jd-interpretation-grid">
         <KeywordMappingTable
           keywords={interpretation?.hardRequirements ?? splitRequirementText(match.job.requirements)}
           missingKeywords={match.missingKeywords}
         />
+        <JdListPanel title="软性素质" items={interpretation?.softQualities} />
+        <JdListPanel title="加分项" items={interpretation?.bonusPoints} />
+        <JdListPanel title="简历侧重" items={interpretation?.resumeFocus} />
+        <JdListPanel title="面试准备" items={interpretation?.interviewPrep} />
         <CompactListPanel title="风险缺口" items={match.risks} warn />
         <CompactListPanel title="下一步动作" items={match.resumeActions} />
       </div>
@@ -1166,13 +1169,6 @@ function MatchList({
   selectedId: string;
   onSelectJob: (id: string) => void;
 }) {
-  function handleRowKeyDown(event: KeyboardEvent<HTMLTableRowElement>, id: string) {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      onSelectJob(id);
-    }
-  }
-
   return (
     <section className="match-column" aria-label="推荐岗位短名单">
       <div className="match-column-title">
@@ -1182,49 +1178,28 @@ function MatchList({
       </div>
       <div className="match-list">
         {matches.length > 0 ? (
-          <div className="match-table-wrap">
-            <table className="match-table">
-              <thead>
-                <tr>
-                  <th scope="col">岗位</th>
-                  <th scope="col">地点</th>
-                  <th scope="col">理由</th>
-                  <th scope="col">缺口</th>
-                </tr>
-              </thead>
-              <tbody>
-                {matches.map((match) => (
-                  <tr
-                    key={match.job.id}
-                    className={`match-table-row ${selectedId === match.job.id ? "selected" : ""}`}
-                    role="button"
-                    tabIndex={0}
-                    aria-current={selectedId === match.job.id ? "true" : undefined}
-                    onClick={() => onSelectJob(match.job.id)}
-                    onKeyDown={(event) => handleRowKeyDown(event, match.job.id)}
-                  >
-                    <td>
-                      <strong>{match.job.title}</strong>
-                      <span>
-                        {match.job.type}
-                      </span>
-                    </td>
-                    <td>
-                      <span>{match.job.city}</span>
-                    </td>
-                    <td>
-                      <span>{match.reasons[0] ?? "腾讯官网岗位匹配"}</span>
-                    </td>
-                    <td>
-                      <span className={match.missingKeywords.length > 2 ? "table-pill warn" : "table-pill"}>
-                        {match.missingKeywords.length}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          matches.map((match) => {
+            const selected = selectedId === match.job.id;
+            return (
+              <button
+                key={match.job.id}
+                className={`recommendation-card ${selected ? "selected" : ""}`}
+                type="button"
+                aria-current={selected ? "true" : undefined}
+                onClick={() => onSelectJob(match.job.id)}
+              >
+                <span className="recommendation-source">{getRecommendationSource(match)}</span>
+                <strong>{match.job.title}</strong>
+                <span className="recommendation-meta">
+                  {match.job.city} · {match.job.type}
+                </span>
+                <span className="recommendation-reason">{getRecommendationReason(match)}</span>
+                <span className={match.missingKeywords.length > 2 ? "recommendation-gap warn" : "recommendation-gap"}>
+                  {getMissingKeywordLabel(match)}
+                </span>
+              </button>
+            );
+          })
         ) : (
           <div className="empty-match-column">
             <strong>暂无岗位</strong>
@@ -1251,7 +1226,7 @@ function KeywordMappingTable({
 
   return (
     <section className="decision-panel">
-      <strong>JD / 简历映射</strong>
+      <strong>硬性条件</strong>
       <table className="decision-table keyword-table">
         <tbody>
           {rows.length > 0 ? (
@@ -1273,6 +1248,25 @@ function KeywordMappingTable({
           )}
         </tbody>
       </table>
+    </section>
+  );
+}
+
+function JdListPanel({ title, items }: { title: string; items?: string[] }) {
+  const visibleItems = (items ?? []).filter(Boolean).slice(0, 5);
+
+  if (visibleItems.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="jd-list-panel">
+      <strong>{title}</strong>
+      <ul>
+        {visibleItems.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
     </section>
   );
 }
@@ -1465,6 +1459,19 @@ function splitRequirementText(requirements: string) {
     .map((item) => item.trim())
     .filter(Boolean)
     .slice(0, 6);
+}
+
+function getRecommendationReason(match: JobMatch) {
+  return match.recommendation?.matchReason || match.reasons[0] || "腾讯官网岗位匹配";
+}
+
+function getRecommendationSource(match: JobMatch) {
+  return match.recommendation?.sourceLabel || "腾讯校招官网岗位";
+}
+
+function getMissingKeywordLabel(match: JobMatch) {
+  const count = match.missingKeywords.length;
+  return count > 0 ? `${count} 个待补关键词` : "暂无明显关键词缺口";
 }
 
 function buildScreeningVerdict(issueCount: number, highlightCount: number, matchCount: number) {

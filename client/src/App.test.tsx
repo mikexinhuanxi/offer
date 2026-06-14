@@ -337,11 +337,26 @@ test("shows task tabs in results and switches to resume optimization", async () 
 
   expect(await screen.findByRole("heading", { name: "推荐结果" })).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "岗位短名单" })).toBeInTheDocument();
-  expect(screen.getByRole("columnheader", { name: "岗位" })).toBeInTheDocument();
-  expect(screen.getByRole("columnheader", { name: "地点" })).toBeInTheDocument();
-  expect(screen.getByRole("columnheader", { name: "理由" })).toBeInTheDocument();
-  expect(screen.getByRole("columnheader", { name: "缺口" })).toBeInTheDocument();
-  expect(screen.getByText("JD / 简历映射")).toBeInTheDocument();
+  expect(screen.queryByRole("columnheader", { name: "岗位" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("columnheader", { name: "地点" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("columnheader", { name: "理由" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("columnheader", { name: "缺口" })).not.toBeInTheDocument();
+  expect(screen.getAllByText("腾讯官网 JD").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("1 个待补关键词").length).toBeGreaterThan(0);
+  expect(screen.getByRole("button", { name: /前端开发工程师/ })).toHaveTextContent(
+    "React 和 TypeScript 经历与岗位要求一致。"
+  );
+  expect(screen.queryByText("88")).not.toBeInTheDocument();
+  expect(screen.queryByText("76")).not.toBeInTheDocument();
+  expect(screen.getByText("硬性条件")).toBeInTheDocument();
+  expect(screen.getByText("软性素质")).toBeInTheDocument();
+  expect(screen.getByText("加分项")).toBeInTheDocument();
+  expect(screen.getByText("简历侧重")).toBeInTheDocument();
+  expect(screen.getAllByText("面试准备").length).toBeGreaterThan(0);
+  expect(screen.getByText("协作沟通")).toBeInTheDocument();
+  expect(screen.getByText("AI 产品经验")).toBeInTheDocument();
+  expect(screen.getByText("突出前端项目")).toBeInTheDocument();
+  expect(screen.getByText("准备项目深挖")).toBeInTheDocument();
   expect(screen.queryByRole("heading", { name: "放入你的简历" })).not.toBeInTheDocument();
   expect(screen.queryByLabelText("捕获过程预览")).not.toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "简历评估报告" })).toBeInTheDocument();
