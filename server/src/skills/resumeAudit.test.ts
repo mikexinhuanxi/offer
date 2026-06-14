@@ -70,8 +70,25 @@ assert.equal(audit.checks.find((check) => check.id === "R006")?.severity, "sugge
 assert.ok(audit.checks.find((check) => check.id === "R006")?.detail.includes("协助"));
 assert.ok(audit.verdict.title);
 assert.ok(audit.score > 0);
+assert.equal(audit.score, Math.round((audit.passedCount / audit.totalCount) * 100));
 assert.ok(audit.prioritizedIssues.some((issue) => issue.title.includes("表达")));
 assert.ok(audit.prioritizedIssues[0]?.suggestion);
 assert.ok("evidence" in audit.prioritizedIssues[0]!);
 assert.ok(audit.nextActions.some((action) => action.includes("量化")));
 assert.equal(audit.integrityNote, "建议只基于真实经历补充证据和表达，不编造学校、公司、奖项、项目或数据。");
+
+const shortAudit = buildResumeAudit("只有一句很短的简历。", profile, [match], review);
+
+assert.equal(shortAudit.totalCount, 7);
+assert.equal(shortAudit.checks.find((check) => check.id === "R001")?.passed, false);
+assert.equal(shortAudit.checks.find((check) => check.id === "R002")?.passed, false);
+assert.equal(shortAudit.checks.find((check) => check.id === "R003")?.passed, false);
+assert.ok(shortAudit.score < 50);
+assert.equal(shortAudit.score, Math.round((shortAudit.passedCount / shortAudit.totalCount) * 100));
+
+const emptyAudit = buildResumeAudit("", profile, [match], review);
+
+assert.equal(emptyAudit.totalCount, 7);
+assert.ok(emptyAudit.score < 50);
+assert.equal(emptyAudit.checks.find((check) => check.id === "R006")?.passed, false);
+assert.ok(emptyAudit.checks.find((check) => check.id === "R006")?.detail.includes("内容不足"));

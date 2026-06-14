@@ -28,49 +28,22 @@ export function buildResumeAudit(
   review: ResumeReview
 ): ResumeAudit {
   const normalizedResume = normalizeText(resumeText);
-  const fullText = normalizeText(
-    [
-      resumeText,
-      profile.summary,
-      profile.education,
-      profile.major,
-      profile.degree,
-      ...profile.skills,
-      ...profile.tools,
-      ...profile.languages,
-      ...profile.internships,
-      ...profile.projects,
-      ...profile.strengths,
-      ...profile.keywords
-    ].join(" ")
-  );
-  const missingKeywords = unique(matches.flatMap((match) => match.missingKeywords));
-  const weakExpressions = WEAK_EXPRESSIONS.filter((expression) => fullText.includes(expression));
+  const weakExpressions = WEAK_EXPRESSIONS.filter((expression) => normalizedResume.includes(expression));
   const length = Array.from(normalizedResume).length;
 
   const checkDefinitions = [
-    buildEducationCheck(fullText, profile),
-    buildProjectCheck(fullText, profile),
-    buildSkillCheck(fullText, profile, missingKeywords),
-    buildStarCheck(fullText),
-    buildQuantifiedResultCheck(fullText, review),
-    buildExpressionCheck(weakExpressions, review),
+    buildEducationCheck(normalizedResume),
+    buildProjectCheck(normalizedResume),
+    buildSkillCheck(normalizedResume),
+    buildStarCheck(normalizedResume),
+    buildQuantifiedResultCheck(normalizedResume),
+    buildExpressionCheck(weakExpressions, length),
     buildLengthCheck(length)
   ];
   const checks = checkDefinitions.map(toAuditCheck);
 
   const passedCount = checks.filter((check) => check.status === "通过").length;
-  const score = Math.round(
-    checks.reduce((total, check) => {
-      if (check.status === "通过") {
-        return total + 1;
-      }
-      if (check.status === "建议改进") {
-        return total + 0.5;
-      }
-      return total;
-    }, 0) / checks.length * 100
-  );
+  const score = Math.round((passedCount / checks.length) * 100);
 
   return {
     score,
@@ -85,12 +58,8 @@ export function buildResumeAudit(
   };
 }
 
-function buildEducationCheck(fullText: string, profile: CandidateProfile): CheckDefinition {
-  const educationSignals = [profile.education, profile.degree, profile.major].filter(Boolean);
-  const passed =
-    educationSignals.length > 0 &&
-    educationSignals.some((signal) => fullText.includes(signal)) &&
-    /(本科|硕士|博士|大专|专业|学院|大学|学校|毕业|读研)/.test(fullText);
+function buildEducationCheck(resumeText: string): CheckDefinition {
+  const passed = /(本科|硕士|博士|大专|专业|学院|大学|学校|毕业|读研|学历|教育经历)/.test(resumeText);
 
   return {
     id: "R001",
@@ -98,16 +67,14 @@ function buildEducationCheck(fullText: string, profile: CandidateProfile): Check
     severity: "error",
     passed,
     detail: passed
-      ? `已呈现${educationSignals.slice(0, 2).join("、")}等教育信息。`
+      ? "简历原文已呈现教育背景线索。"
       : "教育背景信息不够清晰，筛选者难以快速判断学历、专业或学校信息。",
     suggestion: "补充真实的学校、学历、专业、时间段和相关课程，不编造院校或奖项。"
   };
 }
 
-function buildProjectCheck(fullText: string, profile: CandidateProfile): CheckDefinition {
-  const projectSignals = profile.projects.filter(Boolean);
-  const matchedProjects = projectSignals.filter((project) => fullText.includes(project));
-  const passed = projectSignals.length > 0 && (matchedProjects.length > 0 || /项目|系统|平台|应用/.test(fullText));
+function buildProjectCheck(resumeText: string): CheckDefinition {
+  const passed = /项目|系统|平台|应用|作品|产品经理实习|实习经历|项目经历/.test(resumeText);
 
   return {
     id: "R002",
@@ -115,20 +82,19 @@ function buildProjectCheck(fullText: string, profile: CandidateProfile): CheckDe
     severity: "error",
     passed,
     detail: passed
-      ? `已覆盖${(matchedProjects.length > 0 ? matchedProjects : projectSignals).slice(0, 2).join("、")}等项目经历。`
+      ? "简历原文已呈现项目或实习经历线索。"
       : "项目经历不足，缺少能支撑岗位判断的真实案例。",
     suggestion: "选择最贴近目标岗位的真实项目，补充背景、个人动作、技术或产品判断和结果。"
   };
 }
 
-function buildSkillCheck(
-  fullText: string,
-  profile: CandidateProfile,
-  missingKeywords: string[]
-): CheckDefinition {
-  const skills = unique([...profile.skills, ...profile.tools, ...profile.languages]);
-  const matchedSkills = skills.filter((skill) => fullText.toLowerCase().includes(skill.toLowerCase()));
-  const passed = matchedSkills.length >= Math.min(3, skills.length || 3);
+function buildSkillCheck(resumeText: string): CheckDefinition {
+  const skillTerms = resumeText.match(/[A-Za-z][A-Za-z0-9+#. -]{1,30}|[\u4e00-\u9fa5]{2,12}/g) ?? [];
+  const hasSkillSection = /技能|技术栈|工具|语言|熟悉|掌握/.test(resumeText);
+  const technicalTerms = skillTerms.filter((term) =>
+    /[A-Za-z]/.test(term) || /设计|开发|分析|原型|数据|模型|工程|产品/.test(term)
+  );
+  const passed = hasSkillSection && unique(technicalTerms).length >= 3;
 
   return {
     id: "R003",
@@ -136,16 +102,16 @@ function buildSkillCheck(
     severity: "warning",
     passed,
     detail: passed
-      ? `技能列表已呈现${matchedSkills.slice(0, 4).join("、")}。`
-      : `技能呈现偏少${missingKeywords.length > 0 ? `，JD 仍缺 ${missingKeywords.slice(0, 3).join("、")}` : ""}。`,
+      ? `技能列表已呈现${unique(technicalTerms).slice(0, 4).join("、")}。`
+      : "技能呈现偏少，简历原文缺少清晰的技能、工具或语言列表。",
     suggestion: "把技能名和使用场景放在一起，优先补充与目标岗位真实相关的工具、语言和方法。"
   };
 }
 
-function buildStarCheck(fullText: string): CheckDefinition {
-  const hasSituation = /项目|实习|业务|用户|场景|背景|系统|平台/.test(fullText);
-  const hasTaskOrAction = /负责|设计|开发|搭建|分析|推进|优化|制定|基于|完成/.test(fullText);
-  const hasResult = QUANTIFIED_RESULT_PATTERN.test(fullText) || /上线|落地|交付|成果|结果|产出|浏览量|点赞/.test(fullText);
+function buildStarCheck(resumeText: string): CheckDefinition {
+  const hasSituation = /项目|实习|业务|用户|场景|背景|系统|平台/.test(resumeText);
+  const hasTaskOrAction = /负责|设计|开发|搭建|分析|推进|优化|制定|基于|完成/.test(resumeText);
+  const hasResult = QUANTIFIED_RESULT_PATTERN.test(resumeText) || /上线|落地|交付|成果|结果|产出|浏览量|点赞/.test(resumeText);
   const passed = hasSituation && hasTaskOrAction && hasResult;
 
   return {
@@ -160,10 +126,9 @@ function buildStarCheck(fullText: string): CheckDefinition {
   };
 }
 
-function buildQuantifiedResultCheck(fullText: string, review: ResumeReview): CheckDefinition {
-  const quantifiedSignals = fullText.match(QUANTIFIED_RESULT_PATTERN) ?? [];
-  const reviewMentionsQuant = review.issues.some((issue) => issue.includes("量化"));
-  const passed = quantifiedSignals.length > 0 && !reviewMentionsQuant;
+function buildQuantifiedResultCheck(resumeText: string): CheckDefinition {
+  const quantifiedSignals = resumeText.match(QUANTIFIED_RESULT_PATTERN) ?? [];
+  const passed = quantifiedSignals.length > 0;
 
   return {
     id: "R005",
@@ -171,24 +136,26 @@ function buildQuantifiedResultCheck(fullText: string, review: ResumeReview): Che
     severity: "suggestion",
     passed,
     detail: quantifiedSignals.length > 0
-      ? `已出现 ${quantifiedSignals[0]} 等量化线索${reviewMentionsQuant ? "，但覆盖仍不均" : ""}。`
+      ? `已出现 ${quantifiedSignals[0]} 等量化线索。`
       : "缺少百分比、人数、规模、效率提升或覆盖范围等可验证结果。",
     suggestion: "补充量化成果，例如规模、效率、转化、覆盖人数、任务完成率或增长/降低幅度。"
   };
 }
 
-function buildExpressionCheck(weakExpressions: string[], review: ResumeReview): CheckDefinition {
-  const reviewMentionsExpression = review.issues.some((issue) => /表达|措辞|偏弱/.test(issue));
-  const passed = weakExpressions.length === 0 && !reviewMentionsExpression;
+function buildExpressionCheck(weakExpressions: string[], length: number): CheckDefinition {
+  const hasEnoughContent = length >= 50;
+  const passed = hasEnoughContent && weakExpressions.length === 0;
 
   return {
     id: "R006",
     name: "表达优化",
     severity: "suggestion",
     passed,
-    detail: passed
-      ? "表达中未发现明显弱动作词，整体可继续强化个人贡献。"
-      : `发现${weakExpressions.length > 0 ? `「${weakExpressions.join("、")}」` : "偏弱表达"}，容易弱化个人贡献。`,
+    detail: !hasEnoughContent
+      ? "内容不足，建议先补充基础经历后再优化表达。"
+      : passed
+        ? "表达中未发现明显弱动作词，整体可继续强化个人贡献。"
+        : `发现「${weakExpressions.join("、")}」，容易弱化个人贡献。`,
     suggestion: "把弱表达替换为真实动作，例如负责拆解需求、设计原型、推动评审、验证效果。"
   };
 }
