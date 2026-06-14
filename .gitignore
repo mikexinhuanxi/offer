@@ -5,6 +5,7 @@ dist/
 npm-debug.log*
 coverage/
 tmp/
+.worktrees/
 .superpowers/
 *.sqlite
 *.sqlite-*
