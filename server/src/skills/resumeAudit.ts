@@ -92,7 +92,8 @@ function buildSkillCheck(resumeText: string): CheckDefinition {
   const skillTerms = resumeText.match(/[A-Za-z][A-Za-z0-9+#. -]{1,30}|[\u4e00-\u9fa5]{2,12}/g) ?? [];
   const hasSkillSection = /技能|技术栈|工具|语言|熟悉|掌握/.test(resumeText);
   const technicalTerms = skillTerms.filter((term) =>
-    /[A-Za-z]/.test(term) || /设计|开发|分析|原型|数据|模型|工程|产品/.test(term)
+    (/[A-Za-z]/.test(term) || /设计|开发|分析|原型|数据|模型|工程|产品/.test(term)) &&
+    !isNonSkillTerm(term)
   );
   const passed = hasSkillSection && unique(technicalTerms).length >= 3;
 
@@ -257,4 +258,23 @@ function uniqueIssues(issues: ResumeAuditIssue[]) {
     seen.add(key);
     return true;
   });
+}
+
+const NON_SKILL_PATTERNS = [
+  /@/,                          // email address
+  /^https?:\/\//i,              // URL
+  /\.(com|cn|net|org|edu|io|cc|xyz|top|app)\b/i,  // domain name
+  /^\d+$/,                      // pure numbers
+  /^[A-Za-z]+\d{3,}$/,         // username like manxinhuanxi123 (letters + 3+ digits)
+  /^\d{4,}$/,                   // long digit strings (phone fragments, dates etc.)
+  /^(qq|wechat|weixin|phone|tel|email|mail)$/i  // contact field labels
+];
+
+function isNonSkillTerm(term: string): boolean {
+  const trimmed = term.trim().toLowerCase();
+  // Skip single character terms
+  if (trimmed.length <= 1) {
+    return true;
+  }
+  return NON_SKILL_PATTERNS.some((pattern) => pattern.test(trimmed));
 }

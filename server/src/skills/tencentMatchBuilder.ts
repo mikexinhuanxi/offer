@@ -154,9 +154,23 @@ function inferSoftQualities(job: Job) {
 }
 
 function extractKeywords(job: Job) {
-  const terms = jobToText(job).match(/[A-Za-z][A-Za-z0-9+#.]{1,20}|[\u4e00-\u9fa5]{2,8}/g) ?? [];
-  const stopWords = new Set(["腾讯", "岗位", "负责", "相关", "进行", "具备", "优先", "工作", "项目"]);
-  return unique(terms).filter((term) => !stopWords.has(term)).slice(0, 10);
+  const text = jobToText(job);
+  const englishTerms = text.match(/[A-Za-z][A-Za-z0-9+#.]{1,20}/g) ?? [];
+  // 中文要求至少3个字，减少通用虚词
+  const chineseTerms = text.match(/[\u4e00-\u9fa5]{3,8}/g) ?? [];
+  const allTerms = [...englishTerms, ...chineseTerms];
+  const stopWords = new Set([
+    "腾讯", "岗位", "负责", "相关", "进行", "具备", "优先", "工作", "项目",
+    "能力", "经验", "熟悉", "掌握", "了解", "参与", "协助", "配合", "完成",
+    "良好", "优秀", "较强", "一定", "能够", "可以", "需要", "以及", "或者",
+    "等", "的", "了", "在", "与", "和", "对", "为", "有", "是", "不",
+    "深圳", "总部", "北京", "上海", "广州", "城市", "地点", "实习", "应届",
+    "本科", "硕士", "博士", "学历", "学位", "专业", "学校", "大学",
+    "软件开发", "数据工程", "运营开发", "方向", "计划", "招聘"
+  ]);
+  return unique(allTerms)
+    .filter((term) => !stopWords.has(term))
+    .slice(0, 10);
 }
 
 function splitText(text: string) {
@@ -164,6 +178,7 @@ function splitText(text: string) {
     .split(/[，,、;；\n]/)
     .map((item) => item.trim())
     .filter(Boolean)
+    .filter((item) => !/^\d{1,2}[\.\、\s]*$/.test(item))
     .slice(0, 5);
 }
 

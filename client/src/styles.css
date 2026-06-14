@@ -2287,9 +2287,13 @@ textarea:focus {
 }
 
 .jd-interpretation-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  column-count: 2;
+  column-gap: 10px;
+}
+
+.jd-interpretation-grid > * {
+  break-inside: avoid;
+  margin-bottom: 10px;
 }
 
 .decision-panel {

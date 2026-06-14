@@ -903,7 +903,7 @@ function ScreeningReport({ analysis }: { analysis: AnalysisResponse }) {
               {audit.checks.map((check) => (
                 <span
                   key={check.id}
-                  className={`audit-meter-segment ${check.passed ? "passed" : "not-passed"} ${check.severity}`}
+                  className={`audit-meter-segment ${check.passed ? "passed" : "not-passed"}${!check.passed ? ` ${check.severity}` : ""}`}
                   aria-label={`${check.name}：${check.status}`}
                 />
               ))}
@@ -966,7 +966,7 @@ function AuditCheckTable({ checks }: { checks: ResumeAuditCheck[] }) {
               <tr key={check.id}>
                 <th scope="row">{check.name}</th>
                 <td>
-                  <span className={`audit-status ${check.passed ? "passed" : "not-passed"} ${check.severity}`}>
+                  <span className={`audit-status ${check.passed ? "passed" : "not-passed"}${!check.passed ? ` ${check.severity}` : ""}`}>
                     {check.status}
                   </span>
                 </td>
@@ -1567,6 +1567,11 @@ function buildFilteredShortlist(
     const cityMatches = !hasCityFilter || selectedCities.some((city) => getJobCities(match.job.city).includes(city));
     return categoryMatches && cityMatches;
   });
+
+  // 筛选结果为空时，回退显示全部岗位（宁可多给待补建议，也不要出现"暂无岗位"）
+  if (matching.length === 0) {
+    return matches.slice(0, limit);
+  }
 
   return matching.slice(0, limit);
 }
