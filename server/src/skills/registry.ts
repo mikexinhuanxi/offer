@@ -1,4 +1,4 @@
-import type { AnalysisResponse, SkillTraceStep } from "../types.js";
+import type { AnalysisResponse, JobMatch, SkillTraceStep } from "../types.js";
 import { loadAnalysisJobPool } from "../jobData.js";
 import { parseResume } from "./resumeParser.js";
 import { optimizeResume } from "./resumeOptimizer.js";
@@ -40,6 +40,123 @@ export async function runOfferCatcherPipeline(
     jobSource: pool.source,
     jobCount: pool.count ?? pool.jobs.length
   };
+}
+
+export type AnalysisStreamEvent =
+  | {
+      type: "profile_ready";
+      payload: Pick<AnalysisResponse, "profile" | "trace" | "model">;
+    }
+  | {
+      type: "matches_ready";
+      payload: Pick<
+        AnalysisResponse,
+        "profile" | "matches" | "trace" | "model" | "jobSource" | "jobCount"
+      >;
+    }
+  | {
+      type: "optimizer_ready";
+      payload: Pick<
+        AnalysisResponse,
+        "profile" | "matches" | "trace" | "model" | "jobSource" | "jobCount"
+      >;
+    }
+  | {
+      type: "coaching_ready";
+      payload: AnalysisResponse;
+    }
+  | {
+      type: "done";
+      payload: AnalysisResponse;
+    };
+
+export async function* runOfferCatcherPipelineStream(
+  resumeText: string
+): AsyncGenerator<AnalysisStreamEvent> {
+  const trace: SkillTraceStep[] = [];
+
+  const profile = await timed(trace, "resume-parser", "简历解析 Skill", async () =>
+    parseResume(resumeText)
+  );
+
+  yield {
+    type: "profile_ready",
+    payload: {
+      profile,
+      trace: [...trace],
+      model: modelConfig.model
+    }
+  };
+
+  const pool = await timed(trace, "job-source", "腾讯岗位源 Skill", async () =>
+    loadAnalysisJobPool(profile, resumeText)
+  );
+
+  const skillMatches = await timed(trace, "tencent-match", "腾讯岗位匹配 Skill", async () =>
+    buildTencentSkillMatches(profile, pool.jobs, pool.source)
+  );
+  const initialMatches = withPendingRewriteExamples(skillMatches);
+
+  yield {
+    type: "matches_ready",
+    payload: {
+      profile,
+      matches: initialMatches,
+      trace: [...trace],
+      model: modelConfig.model,
+      jobSource: pool.source,
+      jobCount: pool.count ?? pool.jobs.length
+    }
+  };
+
+  const matches = await timed(trace, "resume-optimizer", "简历优化 Skill", async () =>
+    optimizeResume(resumeText, profile, skillMatches, pool.source)
+  );
+
+  yield {
+    type: "optimizer_ready",
+    payload: {
+      profile,
+      matches,
+      trace: [...trace],
+      model: modelConfig.model,
+      jobSource: pool.source,
+      jobCount: pool.count ?? pool.jobs.length
+    }
+  };
+
+  const tencentCoaching = await timed(trace, "tencent-coach", "腾讯辅导 Skill", async () =>
+    generateTencentCoaching(resumeText, profile, matches, pool.source)
+  );
+
+  const response = {
+    profile,
+    matches,
+    tencentCoaching,
+    trace,
+    model: modelConfig.model,
+    jobSource: pool.source,
+    jobCount: pool.count ?? pool.jobs.length
+  };
+
+  yield {
+    type: "coaching_ready",
+    payload: response
+  };
+
+  yield {
+    type: "done",
+    payload: response
+  };
+}
+
+function withPendingRewriteExamples(
+  matches: Array<Omit<JobMatch, "rewriteExample">>
+): JobMatch[] {
+  return matches.map((match) => ({
+    ...match,
+    rewriteExample: "简历改写示例正在生成中..."
+  }));
 }
 
 async function timed<T>(

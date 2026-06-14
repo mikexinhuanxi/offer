@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, expect, test, vi } from "vitest";
 import App from "./App";
 import CardSwap, { Card } from "./components/CardSwap";
@@ -111,8 +111,8 @@ const sampleAnalysis = {
       reasons: ["项目经历能迁移到后端工程能力"],
       risks: ["需要补充 Java 项目证据"],
       missingKeywords: ["Java", "Spring"],
-      resumeActions: ["补充服务端项目"],
-      rewriteExample: "将数据处理项目改写为服务端接口与性能优化经验。",
+      resumeActions: ["补充服务端项目", "写清接口设计和数据库优化证据"],
+      rewriteExample: "将数据处理项目改写为服务端接口设计、数据库查询优化和稳定性保障经验。",
       recommendation: {
         summary: "适合作为校招方向对照投递。",
         matchReason: "工程化经历可迁移，但需要补充后端关键词。",
@@ -121,7 +121,7 @@ const sampleAnalysis = {
           hardRequirements: ["Java", "Spring"],
           softQualities: ["学习能力"],
           bonusPoints: ["分布式经验"],
-          resumeFocus: ["突出服务端项目"],
+          resumeFocus: ["突出服务端项目", "补充接口设计和数据库优化"],
           interviewPrep: ["准备后端基础"]
         }
       }
@@ -328,6 +328,71 @@ test("starts on a clean white home screen and enters upload from the CTA", async
   expect(swapPreview).toHaveStyle({ width: "780px", height: "500px" });
 });
 
+test("renders streamed matches before coaching finishes", async () => {
+  let streamController: ReadableStreamDefaultController<Uint8Array> | undefined;
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      streamController = controller;
+    }
+  });
+
+  vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
+    const url = String(input);
+    if (url.endsWith("/api/jobs")) {
+      return new Response(JSON.stringify({ count: 1, source: "tencent" }));
+    }
+    if (url.endsWith("/api/analyze/stream")) {
+      return new Response(stream, {
+        headers: { "Content-Type": "text/event-stream" }
+      });
+    }
+    if (url.endsWith("/api/analyze")) {
+      return new Response(JSON.stringify({ error: "legacy endpoint should not be used" }), { status: 500 });
+    }
+    return new Response("{}", { status: 404 });
+  });
+
+  render(<App />);
+
+  fireEvent.click(screen.getByRole("button", { name: "开始捕捉 Offer" }));
+  fireEvent.click(await screen.findByRole("button", { name: "载入样例" }));
+  fireEvent.click(screen.getByRole("button", { name: "开始捕获" }));
+
+  expect(await screen.findByText("Offer 捕手正在生成")).toBeInTheDocument();
+  expect(screen.getAllByText("正在解析简历画像").length).toBeGreaterThan(0);
+
+  await waitFor(() => expect(streamController).toBeDefined());
+  streamController!.enqueue(
+    encoder.encode(
+      `event: matches_ready\ndata: ${JSON.stringify({
+        profile: sampleAnalysis.profile,
+        matches: sampleAnalysis.matches,
+        trace: [],
+        model: "qwen-plus",
+        jobSource: "tencent",
+        jobCount: 1
+      })}\n\n`
+    )
+  );
+
+  expect(await screen.findByRole("heading", { name: "推荐结果" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /前端开发工程师/ })).toBeInTheDocument();
+  expect(screen.getByText("岗位短名单已生成")).toBeInTheDocument();
+  expect(screen.getAllByText("简历建议正在生成").length).toBeGreaterThan(0);
+  expect(screen.queryByText("自动规则检查 + 人工审阅")).not.toBeInTheDocument();
+
+  streamController!.enqueue(
+    encoder.encode(
+      `event: coaching_ready\ndata: ${JSON.stringify(sampleAnalysis)}\n\n` +
+        `event: done\ndata: ${JSON.stringify(sampleAnalysis)}\n\n`
+    )
+  );
+  streamController!.close();
+
+  expect(await screen.findByText("自动规则检查 + 人工审阅")).toBeInTheDocument();
+});
+
 test("shows task tabs in results and switches to resume optimization", async () => {
   render(<App />);
 
@@ -361,11 +426,11 @@ test("shows task tabs in results and switches to resume optimization", async () 
   expect(screen.queryByLabelText("捕获过程预览")).not.toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "简历评估报告" })).toBeInTheDocument();
   expect(screen.getByText("自动规则检查 + 人工审阅")).toBeInTheDocument();
-  expect(screen.getByText("71")).toBeInTheDocument();
-  expect(screen.getByText("5/7 通过")).toBeInTheDocument();
+  expect(screen.getAllByText("71").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("5/7 通过").length).toBeGreaterThan(0);
   expect(screen.getByText("表达优化")).toBeInTheDocument();
   expect(screen.getByText("发现可优化表达：「协助」建议明确你的独立贡献。")).toBeInTheDocument();
-  expect(screen.getByText("建议只基于真实经历补充证据和表达，不编造学校、公司、奖项、项目或数据。")).toBeInTheDocument();
+  expect(screen.getAllByText("建议只基于真实经历补充证据和表达，不编造学校、公司、奖项、项目或数据。").length).toBeGreaterThan(0);
   expect(screen.getByRole("heading", { name: "推荐岗位" })).toBeInTheDocument();
   const shortlist = screen.getByLabelText("推荐岗位短名单");
   expect(shortlist).toBeInTheDocument();
@@ -398,8 +463,47 @@ test("shows task tabs in results and switches to resume optimization", async () 
   fireEvent.click(screen.getByRole("tab", { name: "简历优化" }));
 
   expect(screen.getByRole("tab", { name: "简历优化", selected: true })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "简历优化工作台" })).toBeInTheDocument();
+  expect(screen.getByText("基于当前推荐岗位，简历最该补的是岗位证据、量化结果和个人动作。")).toBeInTheDocument();
+  expect(screen.getByText("诊断依据")).toBeInTheDocument();
+  expect(screen.getByText("立即修改")).toBeInTheDocument();
+  expect(screen.getAllByText("71").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("5/7 通过").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("检查明细").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("需要优先改").length).toBeGreaterThan(0);
+  expect(screen.getByText("当前岗位")).toBeInTheDocument();
+  expect(screen.getAllByText("前端开发工程师").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("React").length).toBeGreaterThan(0);
   expect(screen.getByText("突出 React 工程能力。")).toBeInTheDocument();
+  expect(screen.getByText("负责组件封装并提升复用率。")).toBeInTheDocument();
+  expect(screen.getByText("将项目经历改写为可量化成果。")).toBeInTheDocument();
   expect(screen.getAllByText("项目方向清晰").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("建议只基于真实经历补充证据和表达，不编造学校、公司、奖项、项目或数据。").length).toBeGreaterThan(0);
+});
+
+test("updates resume workbench action column when the selected job changes", async () => {
+  render(<App />);
+
+  fireEvent.click(screen.getByRole("button", { name: "开始捕捉 Offer" }));
+  fireEvent.click(await screen.findByRole("button", { name: "载入样例" }));
+  fireEvent.click(screen.getByRole("button", { name: "开始捕获" }));
+
+  expect(await screen.findByRole("heading", { name: "推荐结果" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "筛选推荐岗位" }));
+  fireEvent.click(screen.getByRole("checkbox", { name: "校招" }));
+  fireEvent.click(screen.getByRole("checkbox", { name: "北京" }));
+  fireEvent.click(screen.getByRole("button", { name: /后端开发工程师/ }));
+  fireEvent.click(screen.getByRole("tab", { name: "简历优化" }));
+
+  expect(screen.getByRole("heading", { name: "简历优化工作台" })).toBeInTheDocument();
+  expect(screen.getByText("当前岗位")).toBeInTheDocument();
+  expect(screen.getAllByText("后端开发工程师").length).toBeGreaterThan(0);
+  expect(screen.getByText("Java")).toBeInTheDocument();
+  expect(screen.getByText("Spring")).toBeInTheDocument();
+  expect(screen.getByText("补充服务端项目")).toBeInTheDocument();
+  expect(screen.getByText("写清接口设计和数据库优化证据")).toBeInTheDocument();
+  expect(screen.getByText("将数据处理项目改写为服务端接口设计、数据库查询优化和稳定性保障经验。")).toBeInTheDocument();
+  expect(screen.getByText("补充接口设计和数据库优化")).toBeInTheDocument();
 });
 
 test("shows an empty state when audit checks are missing", async () => {

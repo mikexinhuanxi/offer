@@ -59,3 +59,31 @@ assert.deepEqual(matches[0]?.breakdown, {
 });
 assert.equal(matches[0]?.recommendation?.matchReason, "技能/经历关键词匹配：TypeScript");
 assert.ok(matches[0]?.recommendation?.sourceLabel.includes("Tencent Campus Recruit skill"));
+
+const noisyOrgJob: Job = {
+  id: "tencent-data",
+  company: "腾讯",
+  title: "数据分析实习生",
+  city: "深圳",
+  type: "实习",
+  description: "招聘部门：QQ / PCG技术线-AI和大数据平台方向\nBG/组织：PCG平台与内容事业群",
+  requirements: "本科以上学历；数学；统计；运筹学；计算机等相关专业；QQ",
+  bonus: "有 SQL 或 Python 经验",
+  link: "https://join.qq.com/post_detail.html?postid=tencent-data",
+  deadline: "",
+  skillMatchReasons: []
+};
+
+const [noisyOrgMatch] = buildTencentSkillMatches(profile, [noisyOrgJob]);
+assert.ok(noisyOrgMatch);
+assert.deepEqual(noisyOrgMatch.recommendation?.jdInterpretation.hardRequirements, [
+  "本科以上学历",
+  "数学",
+  "统计",
+  "运筹学",
+  "计算机等相关专业"
+]);
+assert.ok(!noisyOrgMatch.missingKeywords.includes("QQ"));
+assert.ok(!noisyOrgMatch.missingKeywords.includes("PCG"));
+assert.ok(!noisyOrgMatch.missingKeywords.includes("BG"));
+assert.ok(noisyOrgMatch.risks.every((risk) => !/QQ|PCG|BG/.test(risk)));

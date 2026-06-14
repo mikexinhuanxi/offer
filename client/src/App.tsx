@@ -192,9 +192,25 @@ interface AnalysisResponse {
   jobCount: number;
 }
 
+type AnalysisStreamEvent = {
+  type: "started" | "profile_ready" | "matches_ready" | "optimizer_ready" | "coaching_ready" | "done" | "error";
+  payload: Partial<AnalysisResponse> & {
+    error?: string;
+    hint?: string;
+  };
+};
+
 type AppView = "home" | "upload" | "results";
 type ResultsTab = "overview" | "resume" | "interview" | "mock";
 type JobCategory = "internship" | "campus";
+type StreamPhase =
+  | "idle"
+  | "started"
+  | "profile_ready"
+  | "matches_ready"
+  | "optimizer_ready"
+  | "coaching_ready"
+  | "done";
 type JobFilterOption = {
   id: string;
   label: string;
@@ -237,6 +253,7 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string>("");
   const [view, setView] = useState<AppView>("home");
   const [activeResultsTab, setActiveResultsTab] = useState<ResultsTab>("overview");
+  const [streamPhase, setStreamPhase] = useState<StreamPhase>("idle");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -281,29 +298,78 @@ export default function App() {
   async function runAnalysis() {
     setError("");
     setAnalyzing(true);
+    setAnalysis(null);
+    setSelectedId("");
+    setActiveResultsTab("overview");
+    setStreamPhase("started");
+    setAnalysis(createPendingAnalysis(jobInfo));
+    setView("results");
 
     try {
-      const response = await fetch("/api/analyze", {
+      const response = await fetch("/api/analyze/stream", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({ resumeText })
       });
-      const payload = await response.json();
+
+      if (response.status === 404 || response.status === 405) {
+        await runLegacyAnalysis();
+        return;
+      }
+
       if (!response.ok) {
+        const payload = await response.json();
         throw new Error(payload.hint ? `${payload.error} ${payload.hint}` : payload.error);
       }
-      setAnalysis(payload);
-      setSelectedId(payload.matches?.[0]?.job.id ?? "");
-      setActiveResultsTab("overview");
-      setView("results");
-      setJobInfo({ count: payload.jobCount, source: payload.jobSource });
+
+      for await (const event of readAnalysisStream(response)) {
+        if (event.type === "started") {
+          continue;
+        }
+        if (event.type === "error") {
+          throw new Error(event.payload.hint ? `${event.payload.error} ${event.payload.hint}` : event.payload.error);
+        }
+
+        setStreamPhase(event.type);
+        setAnalysis((current) => mergeAnalysis(current, event.payload, jobInfo));
+        if (event.payload.matches?.length) {
+          setSelectedId((current) => current || event.payload.matches?.[0]?.job.id || "");
+        }
+        if (typeof event.payload.jobCount === "number" || event.payload.jobSource) {
+          setJobInfo({
+            count: event.payload.jobCount ?? jobInfo?.count ?? 0,
+            source: event.payload.jobSource ?? jobInfo?.source ?? "streaming"
+          });
+        }
+        setView("results");
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
       setAnalyzing(false);
     }
+  }
+
+  async function runLegacyAnalysis() {
+    const response = await fetch("/api/analyze", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ resumeText })
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.hint ? `${payload.error} ${payload.hint}` : payload.error);
+    }
+    setAnalysis(payload);
+    setSelectedId(payload.matches?.[0]?.job.id ?? "");
+    setActiveResultsTab("overview");
+    setStreamPhase("done");
+    setView("results");
+    setJobInfo({ count: payload.jobCount, source: payload.jobSource });
   }
 
   if (view === "home") {
@@ -330,6 +396,7 @@ export default function App() {
 
         <FadeContent>
           <section className="results-shell">
+            <StreamingGenerationPanel analysis={analysis} phase={streamPhase} active={analyzing} />
             <ProfileSummary profile={analysis.profile} />
             <ScreeningReport analysis={analysis} />
             <ResultsDashboard
@@ -338,6 +405,7 @@ export default function App() {
               onSelectJob={setSelectedId}
               activeTab={activeResultsTab}
               onTabChange={setActiveResultsTab}
+              streaming={analyzing}
             />
           </section>
         </FadeContent>
@@ -492,13 +560,15 @@ function ResultsDashboard({
   selectedId,
   onSelectJob,
   activeTab,
-  onTabChange
+  onTabChange,
+  streaming
 }: {
   analysis: AnalysisResponse;
   selectedId: string;
   onSelectJob: (id: string) => void;
   activeTab: ResultsTab;
   onTabChange: (tab: ResultsTab) => void;
+  streaming: boolean;
 }) {
   const [filterOpen, setFilterOpen] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState<JobCategory[]>([]);
@@ -583,6 +653,7 @@ function ResultsDashboard({
             matches={visibleMatches}
             selectedId={selectedMatch?.job.id ?? ""}
             onSelectJob={onSelectJob}
+            loading={streaming && analysis.matches.length === 0}
           />
         </aside>
         <div className="results-tab-stack">
@@ -611,18 +682,11 @@ function ResultsDashboard({
             aria-labelledby={`results-tab-${activeTab}`}
           >
             {activeTab === "overview" ? (
-              selectedMatch ? <SelectedOpportunity match={selectedMatch} /> : <EmptyResults />
+              selectedMatch ? <SelectedOpportunity match={selectedMatch} /> : <EmptyResults loading={streaming} />
             ) : null}
 
             {activeTab === "resume" ? (
-              <div className="tab-panel-grid">
-                <CoachSection eyebrow="Tencent resume" title="简历诊断">
-                  <ResumeReviewPanel review={coaching?.resumeReview} />
-                </CoachSection>
-                <CoachSection eyebrow="Targeted resume" title="岗位定制">
-                  {selectedMatch ? <JobTailoringPanel match={selectedMatch} tailoring={tailoring} /> : <EmptyResults />}
-                </CoachSection>
-              </div>
+              <ResumeOptimizationWorkbench coaching={coaching} selectedMatch={selectedMatch} />
             ) : null}
 
             {activeTab === "interview" ? (
@@ -654,6 +718,155 @@ function CoachSection({ eyebrow, title, children }: { eyebrow: string; title: st
       <SectionTitle eyebrow={eyebrow} title={title} />
       {children}
     </section>
+  );
+}
+
+function ResumeOptimizationWorkbench({
+  coaching,
+  selectedMatch
+}: {
+  coaching?: TencentCoaching;
+  selectedMatch?: JobMatch;
+}) {
+  const audit = coaching?.resumeAudit;
+  const review = coaching?.resumeReview;
+  const match = selectedMatch;
+  const tailoring = selectedMatch ? coaching?.jobTailoring.find((item) => item.jobId === selectedMatch.job.id) : undefined;
+
+  const issues = audit?.prioritizedIssues ?? buildLegacyIssues(review, match);
+  const resumeFocus = normalizeReportItems(
+    [
+      tailoring?.focus,
+      ...(tailoring?.evidenceToAdd ?? []),
+      ...(match?.recommendation?.jdInterpretation.resumeFocus ?? [])
+    ].filter(Boolean) as string[],
+    ["先把目标岗位 JD 关键词映射到真实项目、实习或课程经历里。"]
+  );
+  const actions = normalizeReportItems([...(match?.resumeActions ?? []), ...(audit?.nextActions ?? review?.actions ?? [])], [
+    "按 STAR 梳理最核心项目，写清背景、任务、动作和结果。"
+  ]);
+  const rewriteExamples = normalizeReportItems([...(tailoring?.rewriteExamples ?? []), match?.rewriteExample].filter(Boolean) as string[], [
+    "先补充真实项目背景、个人动作和结果证据，再生成岗位定制表达。"
+  ]);
+  const principles = normalizeReportItems(review?.rewritePrinciples, [
+    "只基于真实经历优化表达，不编造项目、奖项、公司或数据。"
+  ]);
+
+  return (
+    <section className="resume-workbench" aria-label="简历优化工作台">
+      <div className="resume-workbench-head">
+        <div>
+          <span>Tencent resume</span>
+          <h2>简历优化工作台</h2>
+          <p>基于当前推荐岗位，简历最该补的是岗位证据、量化结果和个人动作。</p>
+        </div>
+        {selectedMatch ? (
+          <div className="resume-workbench-job">
+            <span>当前岗位</span>
+            <strong>{selectedMatch.job.title}</strong>
+            <p>
+              {selectedMatch.job.city} · {selectedMatch.job.type}
+            </p>
+          </div>
+        ) : null}
+      </div>
+
+      {/* Score card — full width */}
+      {audit ? (
+        <div className="resume-score-row">
+          <div className="audit-score compact">
+            <strong>{audit.score}</strong>
+            <span>/100</span>
+          </div>
+          <div>
+            <strong>{`${audit.passedCount}/${audit.totalCount} 通过`}</strong>
+            <p>{audit.verdict.detail}</p>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Two-column middle: check details (不足+建议改进) | priority issues */}
+      <div className="resume-workbench-grid">
+        <section className="resume-diagnostic-panel" aria-label="诊断依据">
+          <div className="resume-panel-title">
+            <span>诊断维度</span>
+            <h3>诊断依据</h3>
+          </div>
+          {audit ? (
+            <AuditCheckTable checks={audit.checks.filter((c) => c.status === "不足" || c.status === "建议改进")} compact />
+          ) : (
+            <AuditList title="腾讯简历原则" items={principles} />
+          )}
+        </section>
+
+        <section className="resume-action-panel" aria-label="立即修改">
+          <div className="resume-panel-title">
+            <span>优先行动</span>
+            <h3>立即修改</h3>
+          </div>
+          {audit ? (
+            <PriorityIssueList issues={issues.slice(0, 3)} />
+          ) : (
+            <PriorityIssueList issues={issues} />
+          )}
+        </section>
+      </div>
+
+      {/* Full-width bottom cards */}
+      {selectedMatch || tailoring || match ? (
+        <>
+          <div className="resume-action-block">
+            <strong>岗位定制</strong>
+            <KeywordPillList title="待补关键词" items={match?.missingKeywords ?? []} emptyText="当前岗位没有明显待补关键词。" />
+            <AuditList title="经历侧重" items={resumeFocus.slice(0, 4)} />
+          </div>
+          <RewriteComparison examples={rewriteExamples.slice(0, 2)} />
+          <AuditList title="下一步动作" items={actions.slice(0, 5)} ordered />
+        </>
+      ) : null}
+
+      {/* Integrity note — full width at bottom */}
+      {audit ? (
+        <p className="audit-integrity-note">{audit.integrityNote}</p>
+      ) : null}
+    </section>
+  );
+}
+
+function KeywordPillList({ title, items, emptyText }: { title: string; items: string[]; emptyText: string }) {
+  return (
+    <div className="keyword-pill-list">
+      <span>{title}</span>
+      {items.length > 0 ? (
+        <div>
+          {items.map((item) => (
+            <strong key={item}>{item}</strong>
+          ))}
+        </div>
+      ) : (
+        <p>{emptyText}</p>
+      )}
+    </div>
+  );
+}
+
+function RewriteComparison({ examples }: { examples: string[] }) {
+  return (
+    <div className="report-block rewrite-comparison">
+      <strong>改写示例</strong>
+      <div className="rewrite-comparison-grid">
+        <div>
+          <span>原表达问题</span>
+          <p>表达偏泛时，优先补清楚个人动作、使用方法和真实结果。</p>
+        </div>
+        <div>
+          <span>推荐表达</span>
+          {examples.map((example) => (
+            <p key={example}>{example}</p>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -702,11 +915,11 @@ function SelectedOpportunity({ match }: { match: JobMatch }) {
   );
 }
 
-function EmptyResults() {
+function EmptyResults({ loading = false }: { loading?: boolean }) {
   return (
     <div className="selected-opportunity empty-results">
-      <strong>还没有推荐结果</strong>
-      <p>可以调整简历内容，或稍后刷新岗位库后重新匹配。</p>
+      <strong>{loading ? "岗位详情正在生成" : "还没有推荐结果"}</strong>
+      <p>{loading ? "系统正在读取岗位 JD 和简历关键词，生成后会自动出现在这里。" : "可以调整简历内容，或稍后刷新岗位库后重新匹配。"}</p>
     </div>
   );
 }
@@ -764,6 +977,220 @@ function ErrorBanner({ message }: { message: string }) {
       </section>
     </FadeContent>
   );
+}
+
+function StreamingGenerationPanel({
+  analysis,
+  phase,
+  active
+}: {
+  analysis: AnalysisResponse;
+  phase: StreamPhase;
+  active: boolean;
+}) {
+  const steps = buildStreamingSteps(analysis, phase);
+  const currentMessage = getStreamingMessage(analysis, phase);
+
+  return (
+    <section className={`streaming-generation-panel ${active ? "active" : "complete"}`} aria-live="polite">
+      <div className="streaming-generation-head">
+        <div>
+          <span>{active ? "Live generation" : "Generation complete"}</span>
+          <h2>{active ? "Offer 捕手正在生成" : "Offer 捕手生成完成"}</h2>
+        </div>
+        <div className="streaming-generation-pulse">
+          {active ? <Loader2 className="spin" size={17} /> : <CheckCircle2 size={17} />}
+          <strong>{currentMessage}</strong>
+        </div>
+      </div>
+
+      <div className="streaming-step-grid">
+        {steps.map((step) => (
+          <div className={`streaming-step-card ${step.status}`} key={step.title}>
+            <span>{step.status === "done" ? <CheckCircle2 size={15} /> : step.status === "active" ? <Loader2 className="spin" size={15} /> : step.index}</span>
+            <div>
+              <strong>{step.title}</strong>
+              <p>{step.detail}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function createPendingAnalysis(jobInfo: JobInfo | null): AnalysisResponse {
+  return {
+    profile: {
+      summary: "",
+      education: "",
+      major: "",
+      degree: "",
+      targetRoles: [],
+      cities: [],
+      skills: [],
+      tools: [],
+      languages: [],
+      internships: [],
+      projects: [],
+      strengths: [],
+      risks: [],
+      keywords: []
+    },
+    matches: [],
+    trace: [],
+    model: "",
+    jobSource: jobInfo?.source ?? "",
+    jobCount: jobInfo?.count ?? 0
+  };
+}
+
+function buildStreamingSteps(analysis: AnalysisResponse, phase: StreamPhase) {
+  const phaseRank = getPhaseRank(phase);
+  const matchCount = analysis.matches.length;
+  return [
+    {
+      index: 1,
+      title: phaseRank >= 1 ? "简历画像已生成" : "正在解析简历画像",
+      detail: phaseRank >= 1 ? summarizeProfileSignals(analysis.profile) : "正在提取专业、技能、项目和求职方向。",
+      status: phaseRank >= 1 ? "done" : "active"
+    },
+    {
+      index: 2,
+      title: phaseRank >= 2 ? "岗位短名单已生成" : phaseRank >= 1 ? "岗位短名单正在生成" : "等待岗位匹配",
+      detail: phaseRank >= 2 ? `已匹配 ${matchCount} 个岗位，推荐概览可先查看。` : "正在扫描腾讯岗位 JD，压缩成优先投递列表。",
+      status: phaseRank >= 2 ? "done" : phaseRank >= 1 ? "active" : "pending"
+    },
+    {
+      index: 3,
+      title: phaseRank >= 3 ? "简历建议已生成" : phaseRank >= 2 ? "简历建议正在生成" : "等待简历建议",
+      detail: phaseRank >= 3 ? "已补齐岗位定制动作和改写示例。" : "正在把岗位关键词映射到真实经历和可修改表达。",
+      status: phaseRank >= 3 ? "done" : phaseRank >= 2 ? "active" : "pending"
+    },
+    {
+      index: 4,
+      title: phaseRank >= 4 ? "面试辅导已生成" : phaseRank >= 3 ? "面试辅导正在生成" : "等待面试辅导",
+      detail: phaseRank >= 4 ? "简历评估、面试准备和 HR 内容已补齐。" : "正在整理项目深挖、知识主题和 HR 回答框架。",
+      status: phaseRank >= 4 ? "done" : phaseRank >= 3 ? "active" : "pending"
+    }
+  ];
+}
+
+function getStreamingMessage(analysis: AnalysisResponse, phase: StreamPhase) {
+  if (phase === "done" || phase === "coaching_ready") {
+    return "全部内容已生成";
+  }
+  if (phase === "optimizer_ready") {
+    return "面试辅导正在生成";
+  }
+  if (phase === "matches_ready") {
+    return "简历建议正在生成";
+  }
+  if (phase === "profile_ready") {
+    return "岗位短名单正在生成";
+  }
+  if (analysis.matches.length > 0) {
+    return "简历建议正在生成";
+  }
+  return "正在解析简历画像";
+}
+
+function getPhaseRank(phase: StreamPhase) {
+  const ranks: Record<StreamPhase, number> = {
+    idle: 0,
+    started: 0,
+    profile_ready: 1,
+    matches_ready: 2,
+    optimizer_ready: 3,
+    coaching_ready: 4,
+    done: 4
+  };
+  return ranks[phase];
+}
+
+function summarizeProfileSignals(profile: CandidateProfile) {
+  const signals = [...profile.skills, ...profile.tools, ...profile.targetRoles].filter(Boolean).slice(0, 3);
+  return signals.length > 0 ? `已识别 ${signals.join("、")} 等核心信号。` : "已完成基础画像提取。";
+}
+
+async function* readAnalysisStream(response: Response): AsyncGenerator<AnalysisStreamEvent> {
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw new Error("浏览器不支持读取流式分析结果。");
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) {
+      break;
+    }
+    buffer += decoder.decode(value, { stream: true });
+    let boundary = buffer.indexOf("\n\n");
+    while (boundary >= 0) {
+      const chunk = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+      const event = parseAnalysisStreamEvent(chunk);
+      if (event) {
+        yield event;
+      }
+      boundary = buffer.indexOf("\n\n");
+    }
+  }
+
+  buffer += decoder.decode();
+  const finalEvent = parseAnalysisStreamEvent(buffer);
+  if (finalEvent) {
+    yield finalEvent;
+  }
+}
+
+function parseAnalysisStreamEvent(chunk: string): AnalysisStreamEvent | null {
+  const lines = chunk
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd())
+    .filter(Boolean);
+  if (lines.length === 0) {
+    return null;
+  }
+
+  const type = lines.find((line) => line.startsWith("event:"))?.slice("event:".length).trim() || "message";
+  const data = lines
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.slice("data:".length).trimStart())
+    .join("\n");
+
+  if (!data) {
+    return null;
+  }
+
+  return {
+    type: type as AnalysisStreamEvent["type"],
+    payload: JSON.parse(data) as AnalysisStreamEvent["payload"]
+  };
+}
+
+function mergeAnalysis(
+  current: AnalysisResponse | null,
+  payload: AnalysisStreamEvent["payload"],
+  jobInfo: JobInfo | null
+): AnalysisResponse {
+  const profile = payload.profile ?? current?.profile;
+  if (!profile) {
+    throw new Error("流式分析缺少简历画像。");
+  }
+
+  return {
+    profile,
+    matches: payload.matches ?? current?.matches ?? [],
+    tencentCoaching: payload.tencentCoaching ?? current?.tencentCoaching,
+    trace: payload.trace ?? current?.trace ?? [],
+    model: payload.model ?? current?.model ?? "",
+    jobSource: payload.jobSource ?? current?.jobSource ?? jobInfo?.source ?? "",
+    jobCount: payload.jobCount ?? current?.jobCount ?? jobInfo?.count ?? 0
+  };
 }
 
 function SpotlightCard({ className, children }: { className: string; children: ReactNode }) {
@@ -948,7 +1375,30 @@ function ScreeningReport({ analysis }: { analysis: AnalysisResponse }) {
   );
 }
 
-function AuditCheckTable({ checks }: { checks: ResumeAuditCheck[] }) {
+function AuditCheckTable({ checks, compact = false }: { checks: ResumeAuditCheck[]; compact?: boolean }) {
+  if (compact) {
+    return (
+      <div className="report-block audit-check-card-list">
+        <strong>检查明细</strong>
+        {checks.length > 0 ? (
+          checks.map((check) => (
+            <div key={check.id} className="audit-check-card">
+              <div className="audit-check-card-head">
+                <span className={`audit-status ${check.passed ? "passed" : "not-passed"}${!check.passed ? ` ${check.severity}` : ""}`}>
+                  {check.status}
+                </span>
+                <strong>{check.name}</strong>
+              </div>
+              <p>{check.detail}</p>
+            </div>
+          ))
+        ) : (
+          <p>暂无</p>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="report-block audit-check-table-block">
       <strong>检查明细</strong>
@@ -1162,12 +1612,14 @@ function MatchList({
   icon,
   matches,
   selectedId,
-  onSelectJob
+  onSelectJob,
+  loading
 }: {
   icon: ReactNode;
   matches: JobMatch[];
   selectedId: string;
   onSelectJob: (id: string) => void;
+  loading: boolean;
 }) {
   return (
     <section className="match-column" aria-label="推荐岗位短名单">
@@ -1202,8 +1654,9 @@ function MatchList({
           })
         ) : (
           <div className="empty-match-column">
-            <strong>暂无岗位</strong>
-            <p>换一份简历或刷新岗位库后再试。</p>
+            {loading ? <Loader2 className="spin" size={18} /> : null}
+            <strong>{loading ? "正在生成岗位短名单" : "暂无岗位"}</strong>
+            <p>{loading ? "正在扫描腾讯岗位 JD，匹配完成后会自动填入。" : "换一份简历或刷新岗位库后再试。"}</p>
           </div>
         )}
       </div>
@@ -1451,6 +1904,16 @@ function shortenSource(source?: string) {
 function normalizeReportItems(items?: string[], fallback: string[] = []) {
   const source = items && items.length > 0 ? items : fallback;
   return Array.from(new Set(source.map((item) => item.trim()).filter(Boolean))).slice(0, 4);
+}
+
+function buildLegacyIssues(review?: ResumeReview, match?: JobMatch): ResumeAuditIssue[] {
+  const rawIssues = normalizeReportItems([...(review?.issues ?? []), ...(match?.risks ?? [])], [
+    "简历需要补充更清晰的岗位关键词、个人动作和可验证结果。"
+  ]);
+  return rawIssues.map((issue) => ({
+    title: issue,
+    suggestion: "把问题改写成可验证的真实经历证据，再放到与目标岗位最相关的位置。"
+  }));
 }
 
 function splitRequirementText(requirements: string) {

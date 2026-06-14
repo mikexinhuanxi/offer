@@ -55,8 +55,8 @@ const matches: Omit<JobMatch, "rewriteExample">[] = [
       growth: 70
     },
     reasons: ["岗位与 Java、MySQL 有直接交集。"],
-    risks: ["项目指标还不够明确。"],
-    missingKeywords: ["Redis", "数据结构"],
+    risks: ["项目指标还不够明确。", "JD 关键词 QQ、PCG、BG 在简历中覆盖还不够明确。"],
+    missingKeywords: ["Redis", "数据结构", "QQ"],
     resumeActions: ["补充后台接口设计和数据库优化证据。"]
   }
 ];
@@ -67,3 +67,5 @@ assert.equal(fetchCalled, false);
 assert.equal(optimized.length, 1);
 assert.ok(optimized[0]?.rewriteExample.includes("招聘匹配系统"));
 assert.ok(optimized[0]?.resumeActions.length);
+assert.ok(optimized[0]?.risks.every((risk) => !/QQ|PCG|BG/.test(risk)));
+assert.ok(optimized[0]?.resumeActions.every((action) => !/QQ|PCG|BG/.test(action)));

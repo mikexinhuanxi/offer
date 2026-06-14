@@ -128,7 +128,7 @@ function buildRecommendation(job: Job, reasons: string[], sourceLabel: string): 
 
 function buildJdInterpretation(job: Job): JdInterpretation {
   return {
-    hardRequirements: splitText(job.requirements),
+    hardRequirements: splitText(job.requirements).filter(isCandidateRequirement),
     softQualities: inferSoftQualities(job),
     bonusPoints: splitText(job.bonus),
     resumeFocus: [
@@ -166,11 +166,38 @@ function extractKeywords(job: Job) {
     "等", "的", "了", "在", "与", "和", "对", "为", "有", "是", "不",
     "深圳", "总部", "北京", "上海", "广州", "城市", "地点", "实习", "应届",
     "本科", "硕士", "博士", "学历", "学位", "专业", "学校", "大学",
-    "软件开发", "数据工程", "运营开发", "方向", "计划", "招聘"
+    "软件开发", "数据工程", "运营开发", "方向", "计划", "招聘",
+    ...ORG_STOP_WORDS
   ]);
   return unique(allTerms)
     .filter((term) => !stopWords.has(term))
+    .filter(isCandidateRequirement)
     .slice(0, 10);
+}
+
+const ORG_STOP_WORDS = [
+  "QQ", "PCG", "BG", "CDG", "CSIG", "IEG", "TEG", "WXG", "S1", "S2",
+  "腾讯视频", "应用宝", "腾讯新闻", "腾讯云", "腾讯文档", "腾讯地图", "腾讯健康",
+  "腾讯金融科技", "腾讯营销", "腾讯职能线", "平台与内容事业群", "企业发展事业群",
+  "互动娱乐事业群", "技术工程事业群", "微信事业群", "云与智慧产业事业群"
+];
+
+function isCandidateRequirement(term: string) {
+  const normalized = term.trim();
+  if (!normalized) {
+    return false;
+  }
+  const upper = normalized.toUpperCase();
+  if (ORG_STOP_WORDS.some((word) => upper === word.toUpperCase())) {
+    return false;
+  }
+  if (/^(?:[A-Z]{1,4}|S\d+)(?:\s*(?:\/|、|,|，)\s*(?:[A-Z]{1,4}|S\d+))*$/.test(upper)) {
+    return false;
+  }
+  if (/(?:招聘部门|BG\/组织|事业群|工作室群|技术线|产品线|职能线|团队|平台部|事业部)/.test(normalized)) {
+    return false;
+  }
+  return true;
 }
 
 function splitText(text: string) {
