@@ -23,6 +23,7 @@ export interface TencentPosition {
   bgs?: unknown;
   work_cities?: unknown;
   apply_url?: unknown;
+  match_reasons?: unknown;
   jd?: TencentJd;
 }
 
@@ -71,8 +72,11 @@ export function getJobSourceProvider() {
   return "auto";
 }
 
-export async function loadTencentSkillJobs(profile: CandidateProfile) {
-  const query = buildProfileQuery(profile);
+export async function loadTencentSkillJobs(resumeOrProfile: string | CandidateProfile) {
+  const query =
+    typeof resumeOrProfile === "string"
+      ? resumeOrProfile.trim().slice(0, 5000)
+      : buildProfileQuery(resumeOrProfile);
   const result = await runTencentScript<TencentMatchOutput>([
     "match",
     query,
@@ -294,7 +298,8 @@ export function mapTencentPositionToJob(position: TencentPosition): Partial<Job>
       stringValue(jd.apply_url) ||
       stringValue(position.apply_url) ||
       `https://join.qq.com/post_detail.html?postid=${encodeURIComponent(postId)}`,
-    deadline: ""
+    deadline: "",
+    skillMatchReasons: arrayTextValue(position.match_reasons)
   };
 }
 
@@ -310,6 +315,13 @@ function textValue(value: unknown): string {
     return stringValue(value.name) || stringValue(value.title) || stringValue(value.label);
   }
   return stringValue(value);
+}
+
+function arrayTextValue(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map(textValue).filter(Boolean);
 }
 
 function stringValue(value: unknown) {

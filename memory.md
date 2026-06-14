@@ -9,8 +9,7 @@
 用户上传或粘贴简历，后端读取本地岗位库，调用阿里云百炼 OpenAI 兼容接口，按 skill pipeline 输出：
 
 - 简历结构化画像
-- 岗位匹配榜
-- 初筛命中率
+- 腾讯 WorkBuddy skill 返回的真实岗位短名单
 - 匹配理由、风险点、简历优化动作和改写示例
 
 当前产品方向是「浅色极简卡片型」，不是深色 AI 控制台。页面需要简约、好看、产品感强，并带少量 React Bits 风格动效。
@@ -80,16 +79,15 @@ Skill pipeline：
 
 - `server/src/skills/registry.ts`：串联完整流程
 - `server/src/skills/resumeParser.ts`：简历解析 skill
-- `server/src/skills/jobRetriever.ts`：岗位库检索/规则预筛 skill
-- `server/src/skills/matchScorer.ts`：匹配评分 skill
+- `server/src/skills/tencentMatchBuilder.ts`：把腾讯 WorkBuddy skill 的 match 结果适配为前端展示结构；不重新排序、不输出分数或概率
 - `server/src/skills/resumeOptimizer.ts`：简历优化 skill
 
 可复用的外部腾讯校招 Skill：
 
 - 本机有 WorkBuddy 腾讯校招 skill：`/Users/mike/.workbuddy/skills/skill_2054903442024890368/`
 - 已接入的部分：`scripts/fetch_recruit_jds.py` 拉取 `join.qq.com` 真实岗位/JD，`references/resume-guide.md`、`references/interview-prep.md`、`references/job-database.md` 作为腾讯校招简历诊断、岗位定制、面试准备、模拟面试、群面/HR 面辅导参考
-- 接入方式：`server/src/tencentSkill.ts` 把 WorkBuddy skill 包装为官网抓取能力；`server/src/tencentJobCache.ts` 使用 SQLite 每日缓存腾讯全量岗位摘要，并按需缓存候选岗位完整 JD；`JOB_SOURCE_PROVIDER=auto` 默认优先腾讯缓存，失败回退本地岗位库；`local` 强制本地；`tencent` 强制腾讯
-- 岗位推荐规则：遵守腾讯 skill 模块二。每日刷新时必须全量抓取官网岗位摘要，分析时基于缓存中的全量结果本地匹配 `title`、`recruit_label`、`project_name`、BG、工作地等字段，候选详情来自 `detail <post_id>`。前端不要展示分数、百分比或排名算法，只展示 3-5 个真实岗位、官网字段、1-2 句推荐理由和 JD 五段解读
+- 接入方式：`server/src/tencentSkill.ts` 把 WorkBuddy skill 包装为官网抓取能力；`server/src/tencentJobCache.ts` 仍用于岗位总量和手动刷新；分析接口默认直接调用腾讯 skill 的 `match`，失败时不悄悄回退本地岗位库；只有显式 `JOB_SOURCE_PROVIDER=local` 才走本地调试岗位
+- 岗位推荐规则：遵守腾讯 skill 模块二。分析时直接调用 WorkBuddy skill 的 `scripts/fetch_recruit_jds.py match "<原始简历文本>"`，使用脚本返回的岗位顺序、真实官网字段、投递链接和 `match_reasons`；项目内不得再接自研岗位检索、二次评分、分数、百分比或排名算法。前端只展示 3-5 个真实岗位、官网字段、1-2 句推荐理由和 JD 五段解读
 - 腾讯辅导输出：`server/src/skills/tencentCoach.ts` 生成 `tencentCoaching`，前端结果页用 Tabs 展示「岗位推荐 / 简历诊断 / 岗位定制 / 面试准备 / 模拟面试 / 群面/HR」
 - 没有接入的部分：WorkBuddy hooks、埋点上报和强制选项式追问规则，不要直接搬进网页 demo
 - 腾讯岗位推荐必须基于官网脚本返回的真实岗位、部门、工作地、JD 和投递链接；不要凭模型经验编造岗位、通过率、HC、薪酬或录取概率

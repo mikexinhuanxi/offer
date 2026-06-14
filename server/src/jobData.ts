@@ -3,8 +3,8 @@ import { constants } from "node:fs";
 import { extname, isAbsolute, resolve } from "node:path";
 import Papa from "papaparse";
 import { sampleJobs } from "./sampleJobs.js";
-import { loadTencentCachedJobs, loadTencentCachedStatus } from "./tencentJobCache.js";
-import { getJobSourceProvider } from "./tencentSkill.js";
+import { loadTencentCachedStatus } from "./tencentJobCache.js";
+import { getJobSourceProvider, loadTencentSkillJobs } from "./tencentSkill.js";
 import type { CandidateProfile, Job } from "./types.js";
 
 export interface JobPool {
@@ -30,24 +30,12 @@ export async function loadJobPool(): Promise<JobPool> {
   return loadLocalJobPool();
 }
 
-export async function loadAnalysisJobPool(profile: CandidateProfile): Promise<JobPool> {
+export async function loadAnalysisJobPool(profile: CandidateProfile, resumeText = ""): Promise<JobPool> {
   const provider = getJobSourceProvider();
   if (provider === "local") {
     return loadLocalJobPool();
   }
-  if (provider === "tencent") {
-    return loadTencentCachedJobs(profile);
-  }
-
-  try {
-    return await loadTencentCachedJobs(profile);
-  } catch (error) {
-    const localPool = await loadLocalJobPool();
-    return {
-      ...localPool,
-      source: `${localPool.source}（腾讯 skill 回退：${formatFallbackReason(error)}）`
-    };
-  }
+  return loadTencentSkillJobs(resumeText || profile);
 }
 
 async function loadLocalJobPool(): Promise<JobPool> {
@@ -70,11 +58,6 @@ async function loadLocalJobPool(): Promise<JobPool> {
     jobs: sampleJobs,
     source: "built-in sample jobs"
   };
-}
-
-function formatFallbackReason(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.replace(/\s+/g, " ").slice(0, 120);
 }
 
 async function parseJobFile(filePath: string): Promise<Partial<Job>[]> {

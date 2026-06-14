@@ -1,11 +1,10 @@
 import type { AnalysisResponse, SkillTraceStep } from "../types.js";
 import { loadAnalysisJobPool } from "../jobData.js";
-import { retrieveJobs } from "./jobRetriever.js";
-import { scoreMatches } from "./matchScorer.js";
 import { parseResume } from "./resumeParser.js";
 import { optimizeResume } from "./resumeOptimizer.js";
 import { generateTencentCoaching } from "./tencentCoach.js";
 import { modelConfig } from "../modelClient.js";
+import { buildTencentSkillMatches } from "./tencentMatchBuilder.js";
 
 export async function runOfferCatcherPipeline(
   resumeText: string
@@ -17,19 +16,15 @@ export async function runOfferCatcherPipeline(
   );
 
   const pool = await timed(trace, "job-source", "腾讯岗位源 Skill", async () =>
-    loadAnalysisJobPool(profile)
+    loadAnalysisJobPool(profile, resumeText)
   );
 
-  const retrievedJobs = await timed(trace, "job-retriever", "岗位库检索 Skill", async () =>
-    retrieveJobs(profile, pool.jobs)
-  );
-
-  const scoredMatches = await timed(trace, "match-scorer", "匹配评分 Skill", async () =>
-    scoreMatches(profile, retrievedJobs, pool.source)
+  const skillMatches = await timed(trace, "tencent-match", "腾讯岗位匹配 Skill", async () =>
+    buildTencentSkillMatches(profile, pool.jobs, pool.source)
   );
 
   const matches = await timed(trace, "resume-optimizer", "简历优化 Skill", async () =>
-    optimizeResume(resumeText, profile, scoredMatches, pool.source)
+    optimizeResume(resumeText, profile, skillMatches, pool.source)
   );
 
   const tencentCoaching = await timed(trace, "tencent-coach", "腾讯辅导 Skill", async () =>

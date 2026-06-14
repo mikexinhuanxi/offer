@@ -9,6 +9,7 @@ export interface Job {
   bonus: string;
   link: string;
   deadline: string;
+  skillMatchReasons?: string[];
 }
 
 export interface CandidateProfile {

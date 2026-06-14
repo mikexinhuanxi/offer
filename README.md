@@ -1,6 +1,6 @@
 # Offer 捕手
 
-学生求职匹配智能体网页 demo。用户上传简历后，后端优先使用本机腾讯校招 WorkBuddy skill 获取 `join.qq.com` 真实岗位/JD，并把腾讯岗位写入本地每日缓存库；分析时从缓存库做专业岗位推荐，再通过阿里云百炼 OpenAI 兼容接口运行 skill pipeline，输出岗位推荐、简历诊断、岗位定制改写、面试准备、模拟面试和群面/HR 面辅导。
+学生求职匹配智能体网页 demo。用户上传简历后，后端优先使用本机腾讯校招 WorkBuddy skill 获取 `join.qq.com` 真实岗位/JD；分析时直接调用腾讯 skill 的官网岗位匹配脚本，再通过阿里云百炼 OpenAI 兼容接口运行简历解析与辅导流程，输出岗位推荐、简历诊断、岗位定制改写、面试准备、模拟面试和群面/HR 面辅导。
 
 ## 本地运行
 
@@ -18,7 +18,7 @@ npm run dev
 
 ## 后端岗位库
 
-默认 `JOB_SOURCE_PROVIDER=auto`：后端优先使用腾讯校招 skill 中的 `scripts/fetch_recruit_jds.py` 抓取腾讯官网岗位，并写入本地 SQLite 每日缓存；如果脚本不可用或官网请求失败，自动回退到本地岗位库。
+默认 `JOB_SOURCE_PROVIDER=auto`：后端使用腾讯校招 skill 中的 `scripts/fetch_recruit_jds.py match`，把原始简历文本交给腾讯 WorkBuddy skill 匹配腾讯官网真实岗位；分析接口不会悄悄回退到本地岗位库。
 
 可以在 `.env` 中切换岗位源：
 
@@ -30,11 +30,11 @@ TENCENT_SKILL_PYTHON=python3
 TENCENT_JD_CACHE_DB=data/tencent-jobs.sqlite
 ```
 
-缓存策略：
+腾讯岗位策略：
 
-- 每天首次读取岗位时，运行 `fetch_recruit_jds.py all --max-pages 50 --page-size 100` 抓全量岗位摘要并入库
-- 分析时从全量摘要缓存做本地推荐，不只匹配岗位标题，也匹配 `recruit_label`、`project_name`、BG、工作地等字段
-- 候选岗位缺少完整 JD 时才调用 `fetch_recruit_jds.py detail <post_id>` 补详情，并在当天复用
+- 分析时运行 `fetch_recruit_jds.py match "<原始简历文本>"`，保留腾讯 skill 返回的岗位顺序、岗位字段、投递链接和匹配理由
+- 项目内不再运行自研岗位检索或匹配评分，不展示分数、概率、排名算法
+- 岗位状态接口仍可使用每日缓存读取官网岗位总量
 - 可选手动刷新：`POST /api/jobs/refresh`；如需补齐全部详情可加 `?details=true`
 
 本地岗位库读取 `server/data/jobs.json`，如果不存在则读取 `server/data/jobs.csv`。也可以在 `.env` 中配置：
