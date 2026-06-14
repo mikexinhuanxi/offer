@@ -92,3 +92,10 @@ assert.equal(emptyAudit.totalCount, 7);
 assert.ok(emptyAudit.score < 50);
 assert.equal(emptyAudit.checks.find((check) => check.id === "R006")?.passed, false);
 assert.ok(emptyAudit.checks.find((check) => check.id === "R006")?.detail.includes("内容不足"));
+
+const { generateTencentCoaching } = await import("./tencentCoach.js");
+const coaching = await generateTencentCoaching(resumeText, profile, [match], "Tencent Campus Recruit");
+
+assert.equal(coaching.resumeAudit?.totalCount, 7);
+assert.ok(coaching.resumeAudit?.checks.some((check) => check.name === "表达优化"));
+assert.ok(coaching.resumeAudit?.integrityNote.includes("不编造"));

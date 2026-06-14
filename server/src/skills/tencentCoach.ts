@@ -8,16 +8,19 @@ import type {
   ResumeReview,
   TencentCoaching
 } from "../types.js";
+import { buildResumeAudit } from "./resumeAudit.js";
 
 export async function generateTencentCoaching(
-  _resumeText: string,
+  resumeText: string,
   profile: CandidateProfile,
   matches: JobMatch[],
   _jobSource: string
 ): Promise<TencentCoaching> {
   const topMatches = matches.slice(0, 5);
+  const resumeReview = buildResumeReview(profile, topMatches);
   return {
-    resumeReview: buildResumeReview(profile, topMatches),
+    resumeReview,
+    resumeAudit: buildResumeAudit(resumeText, profile, topMatches, resumeReview),
     jobTailoring: topMatches.map((match) => buildJobTailoring(profile, match)),
     interviewPrep: topMatches.map((match) => buildInterviewPrep(profile, match)),
     mockInterview: buildMockInterview(profile, topMatches[0]),
